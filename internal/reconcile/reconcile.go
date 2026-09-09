@@ -85,6 +85,13 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 		if err != nil {
 			return nil, err
 		}
+		// the line's coordinates, when the repository publishes them
+		if rawCoords, coordErr := src.File(ctx, tag, "coordinates.csv"); coordErr == nil {
+			coords, err = parseCoordinates(rawCoords)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// 2. the ledger, a file until the gate writes one
@@ -203,6 +210,19 @@ func notInBook(advs []status.Advisory, entries []book.Entry) []status.Advisory {
 		}
 	}
 	return out
+}
+
+func parseCoordinates(raw []byte) ([]book.Coordinate, error) {
+	dir, err := os.MkdirTemp("", "line-manager")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "coordinates.csv")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		return nil, err
+	}
+	return book.ReadCoordinates(path)
 }
 
 func shortCommit(c string) string {
