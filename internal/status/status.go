@@ -38,6 +38,8 @@ type Advisory struct {
 	Library  string  `json:"library"`
 	Version  string  `json:"version"`
 	Severity float64 `json:"severity,omitempty"`
+	// SeveritySource says where Severity came from: NVD CVSS 3.1, or GitHub's word when NVD has no score yet.
+	SeveritySource string `json:"severity_source,omitempty"`
 }
 
 // QualifyingSeverity is the bar a CVE outside the book has to reach to make the line
@@ -97,7 +99,8 @@ type Record struct {
 
 // Compute derives the record. Nine steps, no I/O.
 func Compute(in Inputs) Record {
-	rec := Record{Line: in.Line, BookVersion: in.BookVersion, AsOf: in.AsOf, SeveritySource: in.SeveritySource}
+	rec := Record{Line: in.Line, BookVersion: in.BookVersion, AsOf: in.AsOf, SeveritySource: in.SeveritySource,
+		Fixed: []Fixed{}, InProgress: []string{}, Open: []string{}, NotRemediable: []NotRemediable{}, NewSinceBook: []Advisory{}, OutsideBook: []Advisory{}}
 
 	// 1. the CVEs in scope: every entry of the book on this line, one CVE once
 	inScope := map[string]bool{}

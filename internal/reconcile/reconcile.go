@@ -140,7 +140,7 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 			Issues:            is,
 			Advisories:        adv,
 			BacklogRepository: cfg.BacklogRepo,
-			SeveritySource:    "OSV, GitHub advisory severity word (CRITICAL 9, HIGH 7, MODERATE 4, LOW 0.1), NVD CVSS 3.1 to follow",
+			SeveritySource:    "NVD CVSS 3.1 base score as recorded at NVD; GitHub's advisory word (CRITICAL 9, HIGH 7, MODERATE 4, LOW 0.1) only where NVD has no score yet",
 		})
 		records = append(records, rec)
 

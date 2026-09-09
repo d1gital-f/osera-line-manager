@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/d1gital-f/osera-line-manager/internal/status"
 )
@@ -34,6 +35,10 @@ type record struct {
 type resolved struct {
 	CVE      string `json:"cve"`
 	Severity string `json:"severity"`
+	// NVD's CVSS 3.1 base score and record status, read once; NVDChecked says the read happened.
+	NVDScore   float64 `json:"nvd_score"`
+	NVDStatus  string  `json:"nvd_status"`
+	NVDChecked bool    `json:"nvd_checked"`
 }
 
 // Resolve gives every advisory its CVE id (a GHSA id is replaced by its CVE alias when there
@@ -84,7 +89,32 @@ func (c *Client) Resolve(ctx context.Context, advs []status.Advisory, cachePath 
 		return nil, firstErr
 	}
 
-	// 4. the cache written back, the advisories filled
+	// 4. NVD's 3.1 score for every CVE id not read yet, one at a time at NVD's pace
+	nvd := NewNVD()
+	for id, res := range cache {
+		cve := res.CVE
+		if cve == "" {
+			cve = id
+		}
+		if res.NVDChecked || !strings.HasPrefix(cve, "CVE-") {
+			continue
+		}
+		score, state, err := nvd.Score(ctx, cve)
+		if err != nil {
+			return nil, err
+		}
+		res.NVDScore = score
+		res.NVDStatus = state
+		res.NVDChecked = true
+		cache[id] = res
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(nvd.Pause):
+		}
+	}
+
+	// 5. the cache written back, the advisories filled: NVD's number first, GitHub's word when NVD has none
 	if cachePath != "" {
 		if raw, err := json.MarshalIndent(cache, "", "  "); err == nil {
 			_ = os.WriteFile(cachePath, raw, 0o644)
@@ -95,7 +125,13 @@ func (c *Client) Resolve(ctx context.Context, advs []status.Advisory, cachePath 
 		if res.CVE != "" {
 			advs[i].CVE = res.CVE
 		}
-		advs[i].Severity = severityOf(res.Severity)
+		if res.NVDScore > 0 {
+			advs[i].Severity = res.NVDScore
+			advs[i].SeveritySource = "NVD CVSS 3.1"
+		} else {
+			advs[i].Severity = severityOf(res.Severity)
+			advs[i].SeveritySource = "GitHub advisory word, NVD " + res.NVDStatus
+		}
 	}
 	return advs, nil
 }
