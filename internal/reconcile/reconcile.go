@@ -35,6 +35,8 @@ type Config struct {
 	QueryIssues bool
 	// LocalDir, when set, holds cve-backlog.json and supported-lines.csv and replaces the GitHub read.
 	LocalDir string
+	// LocalVersion is the book version recorded on a local run, the directory name when empty.
+	LocalVersion string
 }
 
 // Once runs one pass and returns the records written.
@@ -42,10 +44,15 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 	// 1. the book: at its latest tag on GitHub, or from a local directory for experiments
 	var b *book.Book
 	var lines []book.Line
-	tag, commit := "local", "0000000"
+	tag, commit := "", ""
 	var err error
 	var coords []book.Coordinate
 	if cfg.LocalDir != "" {
+		tag = cfg.LocalVersion
+		if tag == "" {
+			tag = "local " + filepath.Base(cfg.LocalDir)
+		}
+		commit = "no commit, read from disk"
 		b, err = book.Read(filepath.Join(cfg.LocalDir, "cve-backlog.json"))
 		if err != nil {
 			return nil, err
@@ -137,7 +144,7 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 			}
 		}
 		log.Printf("line %s: %s", rec.Line, rec.Status)
-		log.Printf("  book: %s (%s)", tag, commit[:7])
+		log.Printf("  book: %s (%s)", tag, shortCommit(commit))
 		log.Printf("  in scope %d, fixed %d, in progress %d, open %d, not remediable %d", rec.InScope, len(rec.Fixed), len(rec.InProgress), len(rec.Open), len(rec.NotRemediable))
 		log.Printf("  new since book %d, outside the book %d", len(rec.NewSinceBook), len(rec.OutsideBook))
 	}
@@ -196,6 +203,13 @@ func notInBook(advs []status.Advisory, entries []book.Entry) []status.Advisory {
 		}
 	}
 	return out
+}
+
+func shortCommit(c string) string {
+	if len(c) == 40 {
+		return c[:7]
+	}
+	return c
 }
 
 func write(dir string, rec status.Record) error {
