@@ -152,10 +152,35 @@ func TestNewAdvisory(t *testing.T) {
 		}
 	}
 	in := inputs(t, &ledger.Ledger{Events: []ledger.Event{promoted("set-all", cves...)}})
-	in.Advisories = []Advisory{{CVE: "CVE-2026-99999", Library: "org.springframework:spring-core", Version: "5.3.39"}}
+	in.Advisories = []Advisory{
+		{CVE: "CVE-2026-99999", Library: "org.springframework:spring-core", Version: "5.3.39", Severity: 9.1},
+		{CVE: "CVE-2026-99998", Library: "org.springframework:spring-core", Version: "5.3.39", Severity: 5.4},
+	}
 	rec := Compute(in)
-	if rec.Status != PartiallyRemediated || len(rec.NewSinceBook) != 1 {
+	if rec.Status != PartiallyRemediated || len(rec.NewSinceBook) != 1 || rec.NewSinceBook[0].CVE != "CVE-2026-99999" {
 		t.Fatalf("status %q new %v", rec.Status, rec.NewSinceBook)
+	}
+	if len(rec.OutsideBook) != 1 || rec.OutsideBook[0].CVE != "CVE-2026-99998" {
+		t.Fatalf("outside %v", rec.OutsideBook)
+	}
+}
+
+// 10. A CVE below the bar outside the book is tracked and leaves a remediated line remediated.
+func TestBelowBarDoesNotCount(t *testing.T) {
+	b := realBook(t)
+	var cves []string
+	seen := map[string]bool{}
+	for _, e := range b.ForLine(line) {
+		if !seen[e.CVE] {
+			seen[e.CVE] = true
+			cves = append(cves, e.CVE)
+		}
+	}
+	in := inputs(t, &ledger.Ledger{Events: []ledger.Event{promoted("set-all", cves...)}})
+	in.Advisories = []Advisory{{CVE: "CVE-2026-99998", Library: "org.springframework:spring-core", Version: "5.3.39", Severity: 5.4}}
+	rec := Compute(in)
+	if rec.Status != Remediated || len(rec.OutsideBook) != 1 || len(rec.NewSinceBook) != 0 {
+		t.Fatalf("status %q outside %v new %v", rec.Status, rec.OutsideBook, rec.NewSinceBook)
 	}
 }
 

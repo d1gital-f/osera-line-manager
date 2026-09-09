@@ -26,16 +26,25 @@ const (
 // Issue is what the line manager knows about a CVE's GitHub issue: where it
 // lives. An issue moved out of the backlog repository means a producer took it.
 type Issue struct {
-	CVE        string
-	Repository string
+	CVE        string `json:"cve"`
+	Repository string `json:"repository"`
 }
 
 // Advisory is one CVE seen in the advisory sources for a coordinate on the line.
+// Severity is the source's own score, so a reader can tell a new Critical from a
+// CVE the book left out by the rules. The line manager does not apply the rules yet.
 type Advisory struct {
-	CVE     string
-	Library string
-	Version string
+	CVE      string  `json:"cve"`
+	Library  string  `json:"library"`
+	Version  string  `json:"version"`
+	Severity float64 `json:"severity,omitempty"`
 }
+
+// QualifyingSeverity is the bar a CVE outside the book has to reach to make the line
+// partially remediated: High and above, the first of the Risk Navigator rules. The
+// full rule set (KEV, EPSS, the curated list) is applied by the book's generator and
+// will be ported here so both agree.
+const QualifyingSeverity = 7.0
 
 // Inputs is everything the computation reads.
 type Inputs struct {
@@ -48,6 +57,8 @@ type Inputs struct {
 	Advisories  []Advisory
 	// BacklogRepository is the repository issues are born in; an issue elsewhere is in progress.
 	BacklogRepository string
+	// SeveritySource names where Advisory.Severity came from, written into the record.
+	SeveritySource string
 }
 
 // Fixed is one CVE the gate has promoted a fix for.
@@ -77,12 +88,16 @@ type Record struct {
 	InProgress    []string        `json:"in_progress"`
 	Open          []string        `json:"open"`
 	NotRemediable []NotRemediable `json:"not_remediable"`
-	NewSinceBook  []Advisory      `json:"new_since_book"`
+	// NewSinceBook: known on the line, not in the book, and at or above the bar. Makes the line partial.
+	NewSinceBook []Advisory `json:"new_since_book"`
+	// OutsideBook: known on the line, not in the book, below the bar or unscored. Tracked, no effect on the word.
+	OutsideBook    []Advisory `json:"outside_book"`
+	SeveritySource string     `json:"severity_source"`
 }
 
 // Compute derives the record. Nine steps, no I/O.
 func Compute(in Inputs) Record {
-	rec := Record{Line: in.Line, BookVersion: in.BookVersion, AsOf: in.AsOf}
+	rec := Record{Line: in.Line, BookVersion: in.BookVersion, AsOf: in.AsOf, SeveritySource: in.SeveritySource}
 
 	// 1. the CVEs in scope: every entry of the book on this line, one CVE once
 	inScope := map[string]bool{}
@@ -170,14 +185,19 @@ func Compute(in Inputs) Record {
 		rec.Open = append(rec.Open, cve)
 	}
 
-	// 7. new since the book: an advisory on the line the book does not carry
+	// 7. known on the line and not in the book: at or above the bar it is new since the book
+	//    and counts against the line, below it is tracked and shown
 	seen := map[string]bool{}
 	for _, a := range in.Advisories {
 		if inScope[a.CVE] || seen[a.CVE] {
 			continue
 		}
 		seen[a.CVE] = true
-		rec.NewSinceBook = append(rec.NewSinceBook, a)
+		if a.Severity >= QualifyingSeverity {
+			rec.NewSinceBook = append(rec.NewSinceBook, a)
+		} else {
+			rec.OutsideBook = append(rec.OutsideBook, a)
+		}
 	}
 
 	// 8. the lists, in a stable order
@@ -195,6 +215,12 @@ func Compute(in Inputs) Record {
 	sort.Strings(rec.InProgress)
 	sort.Strings(rec.Open)
 	sort.Slice(rec.NewSinceBook, func(i, j int) bool { return rec.NewSinceBook[i].CVE < rec.NewSinceBook[j].CVE })
+	sort.Slice(rec.OutsideBook, func(i, j int) bool {
+		if rec.OutsideBook[i].Severity != rec.OutsideBook[j].Severity {
+			return rec.OutsideBook[i].Severity > rec.OutsideBook[j].Severity
+		}
+		return rec.OutsideBook[i].CVE < rec.OutsideBook[j].CVE
+	})
 
 	// 9. the word: remediated only when nothing is open, nothing in progress and nothing new
 	if len(rec.Open) == 0 && len(rec.InProgress) == 0 && len(rec.NewSinceBook) == 0 {
