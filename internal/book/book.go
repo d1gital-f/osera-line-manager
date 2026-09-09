@@ -119,3 +119,60 @@ func ReadLines(path string) ([]Line, error) {
 	}
 	return out, nil
 }
+
+// Coordinate is one library at one version on one line, from coordinates.csv: the
+// line's full dependency list, of which the book is the subset with a qualifying CVE.
+type Coordinate struct {
+	Line    string
+	Library string
+	Version string
+}
+
+// ReadCoordinates loads coordinates.csv (line_id, library, version).
+func ReadCoordinates(path string) ([]Coordinate, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading the coordinates: %w", err)
+	}
+	defer f.Close()
+	rows, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("parsing the coordinates: %w", err)
+	}
+	var out []Coordinate
+	for i, r := range rows {
+		if i == 0 {
+			continue
+		}
+		if len(r) < 3 {
+			return nil, fmt.Errorf("coordinate row %q has %d columns, 3 expected", r, len(r))
+		}
+		out = append(out, Coordinate{Line: r[0], Library: r[1], Version: r[2]})
+	}
+	return out, nil
+}
+
+// EntriesForLine merges the book's entries and the line's coordinates into one list of
+// library and version pairs, each once, so the advisory sources see the whole line.
+func EntriesForLine(b *Book, coords []Coordinate, lineID string) []Entry {
+	seen := map[string]bool{}
+	var out []Entry
+	for _, e := range b.ForLine(lineID) {
+		key := e.Library + "@" + e.Version
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, e)
+		}
+	}
+	for _, c := range coords {
+		if c.Line != lineID {
+			continue
+		}
+		key := c.Library + "@" + c.Version
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, Entry{Library: c.Library, Version: c.Version, Lines: []string{lineID}})
+		}
+	}
+	return out
+}

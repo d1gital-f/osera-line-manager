@@ -85,16 +85,20 @@ func runCommand(args []string) {
 	queryOSV := fs.Bool("osv", true, "ask OSV for advisories the book does not carry")
 	queryIssues := fs.Bool("issues", true, "ask GitHub where each CVE's issue lives")
 	once := fs.Bool("once", false, "one pass, then exit")
+	local := fs.String("local", "", "a directory with cve-backlog.json and supported-lines.csv, read instead of GitHub")
+	localVersion := fs.String("book-version", "", "the book version to record on a local run, the directory name when empty")
 	fail(fs.Parse(args))
 
 	cfg := reconcile.Config{
-		Owner:       *owner,
-		BacklogRepo: *repo,
-		LedgerPath:  *ledgerPath,
-		OutDir:      *outDir,
-		GitHubToken: os.Getenv("GITHUB_TOKEN"),
-		QueryOSV:    *queryOSV,
-		QueryIssues: *queryIssues,
+		Owner:        *owner,
+		BacklogRepo:  *repo,
+		LedgerPath:   *ledgerPath,
+		OutDir:       *outDir,
+		GitHubToken:  os.Getenv("GITHUB_TOKEN"),
+		QueryOSV:     *queryOSV,
+		QueryIssues:  *queryIssues,
+		LocalDir:     *local,
+		LocalVersion: *localVersion,
 	}
 	log.Printf("line-manager %s watching %s/%s every %s", version, cfg.Owner, cfg.BacklogRepo, *interval)
 

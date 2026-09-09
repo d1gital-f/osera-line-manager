@@ -33,27 +33,51 @@ type Config struct {
 	GitHubToken string
 	QueryOSV    bool
 	QueryIssues bool
+	// LocalDir, when set, holds cve-backlog.json and supported-lines.csv and replaces the GitHub read.
+	LocalDir string
 }
 
 // Once runs one pass and returns the records written.
 func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
-	// 1. the book at its latest tag
-	src := source.New(cfg.Owner, cfg.BacklogRepo, cfg.GitHubToken)
-	tag, commit, err := src.LatestTag(ctx)
-	if err != nil {
-		return nil, err
-	}
-	rawBook, err := src.File(ctx, tag, "cve-backlog.json")
-	if err != nil {
-		return nil, err
-	}
-	rawLines, err := src.File(ctx, tag, "supported-lines.csv")
-	if err != nil {
-		return nil, err
-	}
-	b, lines, err := parse(rawBook, rawLines)
-	if err != nil {
-		return nil, err
+	// 1. the book: at its latest tag on GitHub, or from a local directory for experiments
+	var b *book.Book
+	var lines []book.Line
+	tag, commit := "local", "0000000"
+	var err error
+	var coords []book.Coordinate
+	if cfg.LocalDir != "" {
+		b, err = book.Read(filepath.Join(cfg.LocalDir, "cve-backlog.json"))
+		if err != nil {
+			return nil, err
+		}
+		lines, err = book.ReadLines(filepath.Join(cfg.LocalDir, "supported-lines.csv"))
+		if err != nil {
+			return nil, err
+		}
+		if _, statErr := os.Stat(filepath.Join(cfg.LocalDir, "coordinates.csv")); statErr == nil {
+			coords, err = book.ReadCoordinates(filepath.Join(cfg.LocalDir, "coordinates.csv"))
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		src := source.New(cfg.Owner, cfg.BacklogRepo, cfg.GitHubToken)
+		tag, commit, err = src.LatestTag(ctx)
+		if err != nil {
+			return nil, err
+		}
+		rawBook, err := src.File(ctx, tag, "cve-backlog.json")
+		if err != nil {
+			return nil, err
+		}
+		rawLines, err := src.File(ctx, tag, "supported-lines.csv")
+		if err != nil {
+			return nil, err
+		}
+		b, lines, err = parse(rawBook, rawLines)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 2. the ledger, a file until the gate writes one
@@ -81,7 +105,7 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 		var adv []status.Advisory
 		if cfg.QueryOSV {
 			osv := advisories.New()
-			adv, err = osv.Known(ctx, b.ForLine(ln.ID))
+			adv, err = osv.Known(ctx, book.EntriesForLine(b, coords, ln.ID))
 			if err != nil {
 				return nil, err
 			}
@@ -112,8 +136,10 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 				return nil, err
 			}
 		}
-		log.Printf("line %s: book %s (%s) %s, in scope %d, fixed %d, in progress %d, open %d, not remediable %d, new since book %d, outside the book %d",
-			rec.Line, tag, commit[:7], rec.Status, rec.InScope, len(rec.Fixed), len(rec.InProgress), len(rec.Open), len(rec.NotRemediable), len(rec.NewSinceBook), len(rec.OutsideBook))
+		log.Printf("line %s: %s", rec.Line, rec.Status)
+		log.Printf("  book: %s (%s)", tag, commit[:7])
+		log.Printf("  in scope %d, fixed %d, in progress %d, open %d, not remediable %d", rec.InScope, len(rec.Fixed), len(rec.InProgress), len(rec.Open), len(rec.NotRemediable))
+		log.Printf("  new since book %d, outside the book %d", len(rec.NewSinceBook), len(rec.OutsideBook))
 	}
 	return records, nil
 }
