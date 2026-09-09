@@ -87,6 +87,7 @@ func runCommand(args []string) {
 	once := fs.Bool("once", false, "one pass, then exit")
 	local := fs.String("local", "", "a directory with cve-backlog.json and supported-lines.csv, read instead of GitHub")
 	localVersion := fs.String("book-version", "", "the book version to record on a local run, the directory name when empty")
+	writeLines := fs.String("write-lines", "", "a supported-lines.csv to rewrite with the status columns after each pass")
 	fail(fs.Parse(args))
 
 	cfg := reconcile.Config{
@@ -99,6 +100,7 @@ func runCommand(args []string) {
 		QueryIssues:  *queryIssues,
 		LocalDir:     *local,
 		LocalVersion: *localVersion,
+		LinesPath:    *writeLines,
 	}
 	log.Printf("line-manager %s watching %s/%s every %s", version, cfg.Owner, cfg.BacklogRepo, *interval)
 

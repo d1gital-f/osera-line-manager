@@ -37,6 +37,8 @@ type Config struct {
 	LocalDir string
 	// LocalVersion is the book version recorded on a local run, the directory name when empty.
 	LocalVersion string
+	// LinesPath, when set, is a supported-lines.csv rewritten with the status columns after every pass.
+	LinesPath string
 }
 
 // Once runs one pass and returns the records written.
@@ -154,6 +156,12 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 		log.Printf("  book: %s (%s)", tag, shortCommit(commit))
 		log.Printf("  in scope %d, fixed %d, in progress %d, open %d, not remediable %d", rec.InScope, len(rec.Fixed), len(rec.InProgress), len(rec.Open), len(rec.NotRemediable))
 		log.Printf("  new since book %d, outside the book %d", len(rec.NewSinceBook), len(rec.OutsideBook))
+	}
+	// 6. the status columns of supported-lines.csv, when asked to write them
+	if cfg.LinesPath != "" {
+		if err := WriteLines(cfg.LinesPath, records); err != nil {
+			return nil, err
+		}
 	}
 	return records, nil
 }

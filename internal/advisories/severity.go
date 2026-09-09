@@ -101,12 +101,15 @@ func (c *Client) Resolve(ctx context.Context, advs []status.Advisory, cachePath 
 		}
 		score, state, err := nvd.Score(ctx, cve)
 		if err != nil {
-			return nil, err
+			// NVD unreachable or throttled: the word stands for this pass, the read is retried next pass
+			res.NVDStatus = "NVD not read: " + err.Error()
+		} else {
+			res.NVDScore = score
+			res.NVDStatus = state
+			res.NVDChecked = true
 		}
-		res.NVDScore = score
-		res.NVDStatus = state
-		res.NVDChecked = true
 		cache[id] = res
+		writeCache(cachePath, cache)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -115,11 +118,7 @@ func (c *Client) Resolve(ctx context.Context, advs []status.Advisory, cachePath 
 	}
 
 	// 5. the cache written back, the advisories filled: NVD's number first, GitHub's word when NVD has none
-	if cachePath != "" {
-		if raw, err := json.MarshalIndent(cache, "", "  "); err == nil {
-			_ = os.WriteFile(cachePath, raw, 0o644)
-		}
-	}
+	writeCache(cachePath, cache)
 	for i := range advs {
 		res := cache[advs[i].CVE]
 		if res.CVE != "" {
@@ -134,6 +133,16 @@ func (c *Client) Resolve(ctx context.Context, advs []status.Advisory, cachePath 
 		}
 	}
 	return advs, nil
+}
+
+// writeCache saves what was learnt so far, so a pass cut short loses nothing.
+func writeCache(path string, cache map[string]resolved) {
+	if path == "" {
+		return
+	}
+	if raw, err := json.MarshalIndent(cache, "", "  "); err == nil {
+		_ = os.WriteFile(path, raw, 0o644)
+	}
 }
 
 // resolve reads one record: the CVE behind a GHSA id, and the severity word, which a CVE
