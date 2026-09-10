@@ -45,7 +45,7 @@ type Line struct {
 	FrameworkVersion string
 	BootVersion      string
 	SecurityVersion  string
-	Status           string
+	Scope            string
 	Source           string
 }
 
@@ -113,7 +113,7 @@ func ReadLines(path string) ([]Line, error) {
 			FrameworkVersion: r[1],
 			BootVersion:      r[2],
 			SecurityVersion:  r[3],
-			Status:           r[4],
+			Scope:            r[4],
 			Source:           r[5],
 		})
 	}
