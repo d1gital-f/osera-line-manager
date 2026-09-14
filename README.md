@@ -40,3 +40,4 @@ A plain Go service in the shape of a controller: one reconcile function per line
 | `internal/board` | the organisation board: where each CVE's issue lives, the not remediable label |
 | `internal/rules` | the prioritisation rules read from `rules/prioritisation.yaml` as data |
 | `internal/scan` | the advisory sources (OSV, CISA KEV, FIRST EPSS, NVD) through a disk cache, the dev only advisory file, the rules applied, `cve-backlog.json` and `cve-excluded.json` written |
+| `internal/graph` | the resolve: the anchor's managed artifacts as roots, one Maven probe per artifact inside the pod, breadth first; the graph as CycloneDX 1.6, written, read back and checked |

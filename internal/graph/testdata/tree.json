@@ -1,0 +1,16 @@
+{
+ "groupId": "osera.probe", "artifactId": "probe", "version": "1", "type": "jar", "scope": "", "classifier": "", "optional": "false",
+ "children": [
+  {
+   "groupId": "com.google.code.gson", "artifactId": "gson", "version": "2.8.8", "type": "jar", "scope": "compile", "classifier": "", "optional": "false",
+   "children": [
+    {"groupId": "org.example", "artifactId": "runtime-dep", "version": "1.0", "type": "jar", "scope": "runtime", "classifier": "", "optional": "false", "children": []},
+    {"groupId": "org.example", "artifactId": "optional-dep", "version": "1.0", "type": "jar", "scope": "compile", "classifier": "", "optional": "true", "children": []},
+    {"groupId": "org.example", "artifactId": "test-dep", "version": "1.0", "type": "jar", "scope": "test", "classifier": "", "optional": "false", "children": []},
+    {"groupId": "org.example", "artifactId": "provided-dep", "version": "1.0", "type": "jar", "scope": "provided", "classifier": "", "optional": "false", "children": []},
+    {"groupId": "org.example", "artifactId": "native", "version": "2.0", "type": "jar", "scope": "compile", "classifier": "linux-x86_64", "optional": false,
+     "children": [{"groupId": "org.example", "artifactId": "deep", "version": "3.0", "type": "jar", "scope": "compile", "classifier": "", "optional": "false", "children": []}]}
+   ]
+  }
+ ]
+}

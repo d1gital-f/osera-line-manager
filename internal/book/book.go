@@ -210,3 +210,33 @@ func checkHeader(header []string) error {
 	}
 	return nil
 }
+
+// Anchor is the artifact whose version fixes every package of a line, as the
+// line file writes it: group:artifact@version.
+type Anchor struct {
+	Group    string
+	Artifact string
+	Version  string
+}
+
+// ParseAnchor reads group:artifact@version.
+func ParseAnchor(s string) (Anchor, error) {
+	// 1. the version after the @
+	at := strings.LastIndex(s, "@")
+	if at < 0 {
+		return Anchor{}, fmt.Errorf("anchor %q: expected group:artifact@version", s)
+	}
+	version := s[at+1:]
+
+	// 2. the group and the artifact before it
+	ga := strings.SplitN(s[:at], ":", 2)
+	if len(ga) != 2 || ga[0] == "" || ga[1] == "" || version == "" {
+		return Anchor{}, fmt.Errorf("anchor %q: expected group:artifact@version", s)
+	}
+	return Anchor{Group: ga[0], Artifact: ga[1], Version: version}, nil
+}
+
+// String is group:artifact@version.
+func (a Anchor) String() string {
+	return a.Group + ":" + a.Artifact + "@" + a.Version
+}
