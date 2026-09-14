@@ -1,0 +1,32 @@
+# Dov's rules from https://github.com/finos-osera/risk-navigator/issues/7, as the line manager applies them.
+# A change here is a pull request with two approvers. No code changes.
+version: 0.1.0
+source: https://github.com/finos-osera/risk-navigator/issues/7
+bands:                      # CVSS 3.1 base score as recorded at NVD
+  critical: 9.0
+  high: 7.0
+  medium: 4.0
+signals:                    # what counts as a signal in the 6.0 to 6.9 window
+  epss_percentile: 0.90
+  kev: true
+  member_exploit_evidence: true
+  on_runtime_path_and_listed: true
+  fixed_by_upgrade: true
+include:                    # first rule that fires decides, in this order
+  - rule: critical
+    when: band == critical
+  - rule: high
+    when: band == high
+  - rule: kev
+    when: kev
+  - rule: medium-signal
+    when: score >= 6.0 and score < 7.0 and any signal
+priority:                   # first rule that fires, in this order
+  - P0 / Act:         kev or (band == critical and (epss signal or member exploit evidence))
+  - P1 / Attend:      score >= 7.0
+  - P2 / Investigate: score >= 6.0 and score < 7.0 and any signal
+  - P3 / Track:       score >= 6.0 and score < 7.0
+  - P4 / Exclude:     otherwise
+curated_list:
+  groups: [org.apache.logging.log4j, ch.qos.logback, org.slf4j, io.netty, io.projectreactor.netty, org.yaml]
+  prefixes: [org.springframework, com.fasterxml.jackson, org.apache.tomcat, org.eclipse.jetty, org.hibernate]

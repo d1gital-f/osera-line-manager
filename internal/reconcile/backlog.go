@@ -1,0 +1,261 @@
+// Copyright (c) 2026 Control Plane Limited. All rights reserved.
+// Built by ControlPlane for the FINOS OSERA Exchange.
+// SPDX-License-Identifier: Apache-2.0
+
+package reconcile
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/d1gital-f/osera-line-manager/internal/book"
+	"github.com/d1gital-f/osera-line-manager/internal/graph"
+	"github.com/d1gital-f/osera-line-manager/internal/scan"
+)
+
+// scanStamp is the file that remembers when a line was last scanned.
+func (r *Reconciler) scanStamp(lineID string) string {
+	return r.cachePath("scan-" + lineID + ".stamp")
+}
+
+// needsScan says whether the line's graph is scanned this pass: always when the
+// graph was just built or the line has no entry yet, otherwise when the last
+// scan is older than the rescan interval.
+func needsScan(stamp string, justBuilt, hasEntries bool, interval time.Duration, now time.Time) bool {
+	if justBuilt || !hasEntries {
+		return true
+	}
+	raw, err := os.ReadFile(stamp)
+	if err != nil {
+		return true
+	}
+	last, err := time.Parse(time.RFC3339, strings.TrimSpace(string(raw)))
+	if err != nil {
+		return true
+	}
+	return now.Sub(last) >= interval
+}
+
+// scanLine scans the line's graph when due and merges the result into the backlog.
+func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error {
+	// 1. the decision
+	justBuilt := p.staged[graphPath(ln.ID)] != nil
+	hasEntries := len(p.book.ForLine(ln.ID)) > 0
+	if !needsScan(r.scanStamp(ln.ID), justBuilt, hasEntries, r.cfg.RescanInterval, r.now()) {
+		return nil
+	}
+	if p.rules == nil {
+		logf("line %s: no rules file in the repository, the scan is skipped", ln.ID)
+		return nil
+	}
+
+	// 2. the graph's components
+	g, err := graph.Read(r.path(filepath.FromSlash(graphPath(ln.ID))))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			logf("line %s: no graph yet, nothing to scan", ln.ID)
+			return nil
+		}
+		return err
+	}
+	var components []scan.Component
+	for _, c := range g.Components {
+		components = append(components, scan.Component{Group: c.Group, Artifact: c.Artifact, Version: c.Version})
+	}
+
+	// 3. the sources, then the rules
+	r.scanner.DevAdvisories = ""
+	if r.cfg.DevAdvisories != "" {
+		r.scanner.DevAdvisories = r.path(filepath.FromSlash(r.cfg.DevAdvisories))
+	}
+	logf("line %s: scanning %d components", ln.ID, len(components))
+	findings, err := r.scanner.Scan(ctx, components)
+	if err != nil {
+		return fmt.Errorf("line %s: %w", ln.ID, err)
+	}
+	split := scan.Apply(ln.ID, findings, p.rules)
+	logf("line %s: %d findings, %d applicable, %d excluded", ln.ID, len(findings), len(split.Entries), len(split.Excluded))
+
+	// 4. merged into the backlog, the file's memory kept
+	p.book.Entries = mergeScan(p.book.Entries, ln.ID, split.Entries)
+	excluded, err := r.mergeExcluded(ln.ID, split.Excluded)
+	if err != nil {
+		return err
+	}
+
+	// 5. the three files, staged
+	header := scan.Header{Title: p.book.Title, StandardsPack: p.book.StandardsPack, Generated: p.asOf}
+	err = r.stageBacklog(p, ln.ID, header, excluded)
+	if err != nil {
+		return err
+	}
+
+	// 6. the stamp, not in a dry run
+	if r.cfg.Dry {
+		return nil
+	}
+	return os.WriteFile(r.scanStamp(ln.ID), []byte(r.now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+}
+
+// mergeScan puts a line's scanned entries into the backlog: an entry already
+// there keeps its status and the fields that go with it and takes the scan's
+// facts, a new one is added open, an entry the scan no longer finds stays.
+func mergeScan(existing []book.Entry, lineID string, scanned []book.Entry) []book.Entry {
+	// 1. the entries already there, by key
+	index := map[string]int{}
+	for i, e := range existing {
+		for _, l := range e.Lines {
+			index[entryKey(l, e.CVE, e.Library)] = i
+		}
+	}
+
+	// 2. each scanned entry: refreshed in place or added
+	out := append([]book.Entry{}, existing...)
+	for _, s := range scanned {
+		i, known := index[entryKey(lineID, s.CVE, s.Library)]
+		if !known {
+			s.Status = book.EntryOpen
+			out = append(out, s)
+			continue
+		}
+		e := out[i]
+		e.Version = s.Version
+		e.CVSS = s.CVSS
+		e.CVSSVersion = s.CVSSVersion
+		e.CISAKEV = s.CISAKEV
+		e.EPSSPercentile = s.EPSSPercentile
+		e.Priority = s.Priority
+		e.Why = s.Why
+		e.Summary = s.Summary
+		out[i] = e
+	}
+	return out
+}
+
+// excludedFile is cve-excluded.json as read back.
+type excludedFile struct {
+	Entries []scan.Excluded `json:"entries"`
+}
+
+// mergeExcluded replaces the line's excluded entries with the scan's and keeps the other lines'.
+func (r *Reconciler) mergeExcluded(lineID string, scanned []scan.Excluded) ([]scan.Excluded, error) {
+	// 1. the file as it is
+	var f excludedFile
+	raw, err := os.ReadFile(r.path("cve-excluded.json"))
+	if err == nil {
+		err = json.Unmarshal(raw, &f)
+		if err != nil {
+			return nil, fmt.Errorf("reading cve-excluded.json: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
+	// 2. the other lines' entries, then this line's from the scan
+	var out []scan.Excluded
+	for _, e := range f.Entries {
+		if !contains(e.Lines, lineID) {
+			out = append(out, e)
+		}
+	}
+	return append(out, scanned...), nil
+}
+
+// stageBacklog writes cve-backlog.json, cve-excluded.json and cve-backlog.md and stages them.
+func (r *Reconciler) stageBacklog(p *pass, lineID string, header scan.Header, excluded []scan.Excluded) error {
+	// 1. the two JSON files, written by the scan package in its order
+	backlogPath := r.path("cve-backlog.json")
+	err := scan.WriteBacklog(backlogPath, header, p.book.Entries)
+	if err != nil {
+		return err
+	}
+	err = scan.WriteExcluded(r.path("cve-excluded.json"), header, excluded)
+	if err != nil {
+		return err
+	}
+	rawBacklog, err := os.ReadFile(backlogPath)
+	if err != nil {
+		return err
+	}
+	rawExcluded, err := os.ReadFile(r.path("cve-excluded.json"))
+	if err != nil {
+		return err
+	}
+
+	// 2. the readable table
+	err = r.stage(p, lineID, "cve-backlog.json", rawBacklog)
+	if err != nil {
+		return err
+	}
+	err = r.stage(p, lineID, "cve-excluded.json", rawExcluded)
+	if err != nil {
+		return err
+	}
+	return r.stage(p, lineID, "cve-backlog.md", []byte(table(p.book)))
+}
+
+// replaceEntries puts a line's entries as the status computation left them back
+// into the backlog, and stages the file when anything moved.
+func (r *Reconciler) replaceEntries(p *pass, lineID string, entries []book.Entry) {
+	// 1. the new statuses, by key
+	byKey := map[string]book.Entry{}
+	for _, e := range entries {
+		byKey[entryKey(lineID, e.CVE, e.Library)] = e
+	}
+
+	// 2. in place, remembering whether anything changed
+	changed := false
+	for i, e := range p.book.Entries {
+		n, found := byKey[entryKey(lineID, e.CVE, e.Library)]
+		if !found {
+			continue
+		}
+		if e.Status != n.Status || e.Repository != n.Repository || e.FixedBy != n.FixedBy || e.FixedAt != n.FixedAt || e.Producer != n.Producer || e.Reason != n.Reason {
+			changed = true
+		}
+		p.book.Entries[i] = n
+	}
+	if !changed {
+		return
+	}
+
+	// 3. the files, staged again with the statuses
+	header := scan.Header{Title: p.book.Title, StandardsPack: p.book.StandardsPack, Generated: p.asOf}
+	excluded, err := r.mergeExcluded("", nil)
+	if err != nil {
+		logf("line %s: %v", lineID, err)
+		return
+	}
+	err = r.stageBacklog(p, lineID, header, excluded)
+	if err != nil {
+		logf("line %s: %v", lineID, err)
+	}
+}
+
+// table renders the backlog as one Markdown table, one row per entry.
+func table(b *book.Book) string {
+	var sb strings.Builder
+	sb.WriteString("# " + b.Title + "\n\n")
+	sb.WriteString("Generated " + b.Generated + ", entry schema " + b.SchemaVersion + ". Written by the line manager, never by hand.\n\n")
+	sb.WriteString("| CVE | Library | Version | Line | CVSS | KEV | EPSS | Priority | Status | Fixed by |\n")
+	sb.WriteString("|---|---|---|---|---|---|---|---|---|---|\n")
+	for _, e := range b.Entries {
+		epss := ""
+		if e.EPSSPercentile != nil {
+			epss = fmt.Sprintf("%.3f", *e.EPSSPercentile)
+		}
+		kev := "no"
+		if e.CISAKEV {
+			kev = "yes"
+		}
+		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %.1f (v%s) | %s | %s | %s | %s | %s |\n",
+			e.CVE, e.Library, e.Version, strings.Join(e.Lines, " "), e.CVSS, e.CVSSVersion, kev, epss, e.Priority, e.Status, e.FixedBy)
+	}
+	return sb.String()
+}

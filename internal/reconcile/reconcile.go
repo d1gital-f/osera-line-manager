@@ -2,143 +2,197 @@
 // Built by ControlPlane for the FINOS OSERA Exchange.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package reconcile is the loop: read the backlog at its latest tag, the ledger
-// and the board, compute one record per line, write it. Every pass starts from
-// nothing and is safe to repeat. The scan and the graph are wired in later.
+// Package reconcile is the loop. One pass reads the backlog repository, the
+// board and the release repository, computes one record per line, and writes
+// what changed: the graph, the backlog, the BOM, the line row, the status file,
+// as one pull request the line manager merges itself. Every pass starts from
+// the inputs and is safe to repeat. Nothing here decides a CVE is fixed: the
+// release repository says so, the line manager reports it.
 package reconcile
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
+
 	"github.com/d1gital-f/osera-line-manager/internal/board"
-	"github.com/d1gital-f/osera-line-manager/internal/book"
-	"github.com/d1gital-f/osera-line-manager/internal/status"
+	"github.com/d1gital-f/osera-line-manager/internal/graph"
+	"github.com/d1gital-f/osera-line-manager/internal/releases"
+	"github.com/d1gital-f/osera-line-manager/internal/repo"
+	"github.com/d1gital-f/osera-line-manager/internal/scan"
 )
 
-// Config is what one line manager instance watches.
+// AppConfig identifies the GitHub App the line manager acts as.
+type AppConfig struct {
+	ID             int64
+	InstallationID int64
+	// KeyFile is the path of the App's private key, PEM.
+	KeyFile string
+}
+
+// NexusConfig is the release repository and the account that reads it and
+// publishes the BOMs.
+type NexusConfig struct {
+	URL               string
+	User              string
+	Password          string
+	ReleaseRepository string
+}
+
+// Config is what one line manager instance watches and how.
 type Config struct {
-	Owner       string
-	BacklogRepo string
-	OutDir      string
-	GitHubToken string
-	// Scan says whether the advisory sources are read; not wired yet, the scan package is.
-	Scan bool
-	// QueryBoard reads the organisation board, BoardNumber is the project number.
-	QueryBoard  bool
+	// Owner and Repo name the backlog repository, owner/repo.
+	Owner string
+	Repo  string
+	// CloneDir is where the clone lives, on a volume.
+	CloneDir string
+	App      AppConfig
+	// BoardNumber is the organisation project number of the board.
 	BoardNumber int
-	// LocalDir, when set, holds cve-backlog.json and supported-lines.csv and replaces the GitHub read.
+	Nexus       NexusConfig
+	// WebhookSecret is what Nexus signs its deliveries with.
+	WebhookSecret string
+	// CacheDir holds the scan caches, the evidence cache, the scan stamps and the intent file.
+	CacheDir string
+	// Interval is the time between passes; RescanInterval between two scans of one line's graph.
+	Interval       time.Duration
+	RescanInterval time.Duration
+	// DevAdvisories is the path, inside the repository, of the dev only advisory file. Empty in production.
+	DevAdvisories string
+	// Dry computes and logs, writes nothing to GitHub or Nexus.
+	Dry bool
+	// Listen is the address of the health, status and webhook server.
+	Listen string
+
+	// LocalDir, when set, is a directory with the backlog files read in place of
+	// the clone: no GitHub, no Nexus, no board. The status command uses it.
 	LocalDir string
-	// LocalVersion is the book version recorded on a local run, the directory name when empty.
+	// LocalVersion is the book version recorded on a local run.
 	LocalVersion string
-	// LinesPath, when set, is a supported-lines.csv rewritten with the status columns after every pass.
-	LinesPath string
+
+	// The addresses below are for tests; empty means the real thing.
+	RepoURL    string
+	GitHubAPI  string
+	GraphQLURL string
+	// Now is the clock, replaceable in tests.
+	Now func() time.Time
+	// CheckTimeout bounds the wait for the checks on a pull request; ten minutes when zero.
+	CheckTimeout time.Duration
 }
 
-// Once runs one pass and returns the records written.
-func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
-	// 1. the book and the lines, from a local directory until the clone is wired in
-	var b *book.Book
-	var lines []book.Line
-	tag, commit := "", ""
-	var err error
+// Reconciler holds the clients one instance uses across passes.
+type Reconciler struct {
+	cfg      Config
+	clone    *repo.Clone
+	app      *repo.App
+	api      *repo.Client
+	board    *board.Client
+	nexus    *releases.Client
+	scanner  *scan.Scanner
+	resolver *graph.Resolver
+	now      func() time.Time
+	// wake receives one signal per accepted webhook event; the loop coalesces them.
+	wake chan struct{}
+}
+
+// New builds the clients from the configuration. Nothing is read yet.
+func New(ctx context.Context, cfg Config) (*Reconciler, error) {
+	r := &Reconciler{cfg: cfg, now: cfg.Now, wake: make(chan struct{}, 1)}
+	if r.now == nil {
+		r.now = time.Now
+	}
+	if cfg.CacheDir != "" {
+		err := os.MkdirAll(cfg.CacheDir, 0o755)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 1. the scanner and the resolver, the same in every mode
+	r.scanner = scan.New(filepath.Join(cfg.CacheDir, "scan"))
+	r.resolver = graph.NewResolver()
+
+	// 2. local mode reads a directory and stops there
 	if cfg.LocalDir != "" {
-		tag = cfg.LocalVersion
-		if tag == "" {
-			tag = "local " + filepath.Base(cfg.LocalDir)
-		}
-		commit = "no commit, read from disk"
-		b, err = book.Read(filepath.Join(cfg.LocalDir, "cve-backlog.json"))
-		if err != nil {
-			return nil, err
-		}
-		lines, err = book.ReadLines(filepath.Join(cfg.LocalDir, "supported-lines.csv"))
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		return nil, fmt.Errorf("a local directory is required until the clone is wired in (--local)")
+		return r, nil
 	}
 
-	// 3. the issues, from the board, one paged query
-	var is []status.Issue
-	if cfg.QueryBoard {
-		cards, err := board.New(cfg.Owner, cfg.BoardNumber, cfg.GitHubToken).Read(ctx)
-		if err != nil {
-			return nil, err
-		}
-		is = board.Issues(cards, cfg.BacklogRepo)
+	// 3. the App and the API client
+	key, err := os.ReadFile(cfg.App.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("reading the App key: %w", err)
+	}
+	r.app, err = repo.NewApp(cfg.App.ID, cfg.App.InstallationID, key, &http.Client{Timeout: 60 * time.Second})
+	if err != nil {
+		return nil, err
+	}
+	if cfg.GitHubAPI != "" {
+		r.app.BaseURL = cfg.GitHubAPI
+	}
+	r.api = repo.NewClient(r.app)
+	if cfg.GitHubAPI != "" {
+		r.api.BaseURL = cfg.GitHubAPI
 	}
 
-	// 4. one record per line
-	asOf := time.Now().UTC().Format(time.RFC3339)
-	var records []status.Record
-	for _, ln := range lines {
-		rec := status.Compute(status.Inputs{
-			Line:              ln,
-			BookVersion:       tag,
-			AsOf:              asOf,
-			Book:              b,
-			Issues:            is,
-			BacklogRepository: cfg.BacklogRepo,
-			Consume:           ln.Consume,
-		})
-		records = append(records, rec)
+	// 4. the clone, fetched over HTTPS with the App's token
+	url := cfg.RepoURL
+	if url == "" {
+		url = fmt.Sprintf("https://github.com/%s/%s.git", cfg.Owner, cfg.Repo)
+	}
+	r.clone, err = repo.Open(ctx, cfg.CloneDir, url, nil)
+	if err != nil {
+		return nil, err
+	}
 
-		// 5. written where the feed will pick it up, one file per line
-		if cfg.OutDir != "" {
-			if err := write(cfg.OutDir, rec); err != nil {
-				return nil, err
-			}
-		}
-		log.Printf("line %s: %s", rec.Line, rec.Status)
-		log.Printf("  book: %s (%s)", tag, shortCommit(commit))
-		log.Printf("  in scope %d, fixed %d, in progress %d, open %d, not remediable %d", rec.InScope, len(rec.Fixed), len(rec.InProgress), len(rec.Open), len(rec.NotRemediable))
-		log.Printf("  discrepancies %d", len(rec.Discrepancies))
+	// 5. the board and the release repository
+	r.board = board.New(cfg.Owner, cfg.BoardNumber, "")
+	if cfg.GraphQLURL != "" {
+		r.board.URL = cfg.GraphQLURL
 	}
-	// 6. the status columns of supported-lines.csv, when asked to write them
-	if cfg.LinesPath != "" {
-		if err := WriteLines(cfg.LinesPath, records); err != nil {
-			return nil, err
-		}
-	}
-	return records, nil
+	r.nexus = releases.New(cfg.Nexus.URL, cfg.Nexus.User, cfg.Nexus.Password)
+	return r, nil
 }
 
-// Loop runs Once now and then every interval until the context ends.
-func Loop(ctx context.Context, cfg Config, interval time.Duration) {
-	for {
-		if _, err := Once(ctx, cfg); err != nil {
-			log.Printf("reconcile: %v", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(interval):
-		}
+// auth gives the clone and the board the App's current token. The backlog
+// repository is public, so a fetch works without it; the board does not.
+func (r *Reconciler) auth(ctx context.Context) error {
+	if r.app == nil {
+		return nil
 	}
-}
-
-func shortCommit(c string) string {
-	if len(c) == 40 {
-		return c[:7]
-	}
-	return c
-}
-
-func write(dir string, rec status.Record) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	out, err := json.MarshalIndent(rec, "", "  ")
+	token, err := r.app.Token(ctx)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, fmt.Sprintf("%s.json", rec.Line))
-	return os.WriteFile(path, out, 0o644)
+	r.clone.Auth = &githttp.BasicAuth{Username: "x-access-token", Password: token}
+	r.board.Token = token
+	return nil
+}
+
+// workDir is where the backlog files are read and written: the clone, or the local directory.
+func (r *Reconciler) workDir() string {
+	if r.cfg.LocalDir != "" {
+		return r.cfg.LocalDir
+	}
+	return r.cfg.CloneDir
+}
+
+// path joins a repository path onto the work directory.
+func (r *Reconciler) path(parts ...string) string {
+	return filepath.Join(append([]string{r.workDir()}, parts...)...)
+}
+
+// cachePath joins a name onto the cache directory.
+func (r *Reconciler) cachePath(name string) string {
+	return filepath.Join(r.cfg.CacheDir, name)
+}
+
+// logf is the one logger, one line per step.
+func logf(format string, a ...any) {
+	log.Printf(format, a...)
 }

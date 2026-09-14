@@ -211,3 +211,21 @@ func parseCoordinate(s string) (Dependency, error) {
 	}
 	return Dependency{Group: group, Artifact: artifact, Version: version}, nil
 }
+
+// Read reads the pins of a BOM the line manager wrote earlier, so a pass can
+// tell whether the set of promoted coordinates changed.
+func Read(raw []byte) ([]Dependency, error) {
+	// 1. the project
+	var p pom
+	err := xml.Unmarshal(raw, &p)
+	if err != nil {
+		return nil, fmt.Errorf("reading the BOM: %w", err)
+	}
+
+	// 2. its pins, in the file's order
+	var deps []Dependency
+	for _, d := range p.Dependencies {
+		deps = append(deps, Dependency{Group: d.GroupID, Artifact: d.ArtifactID, Version: d.Version})
+	}
+	return deps, nil
+}

@@ -244,6 +244,16 @@ func (c *Client) Checks(ctx context.Context, owner, repo, sha string) ([]Check, 
 	return checks, nil
 }
 
+// Comment writes one comment on an issue or a pull request.
+func (c *Client) Comment(ctx context.Context, owner, repo string, number int, body string) error {
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, number)
+	err := c.call(ctx, http.MethodPost, path, map[string]string{"body": body}, nil)
+	if err != nil {
+		return fmt.Errorf("commenting on #%d: %w", number, err)
+	}
+	return nil
+}
+
 // CloseIssue comments on an issue, then closes it.
 func (c *Client) CloseIssue(ctx context.Context, owner, repo string, number int, comment string) error {
 	return c.setIssueState(ctx, owner, repo, number, comment, "closed")
