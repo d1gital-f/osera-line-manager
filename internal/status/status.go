@@ -16,11 +16,13 @@ import (
 	"github.com/d1gital-f/osera-line-manager/internal/ledger"
 )
 
-// The two words a line can carry. There is no third: a line with a CVE the book
-// does not know yet is partially remediated, and the record says why.
+// The three words a line can carry. Fixed only when nothing is open, nothing is
+// in progress and nothing new is known since the backlog; not fixed when no entry
+// is fixed; in progress otherwise.
 const (
-	Remediated          = "remediated"
-	PartiallyRemediated = "partially remediated"
+	NotFixed   = "not fixed"
+	InProgress = "in progress"
+	Fixed      = "fixed"
 )
 
 // Issue is what the line manager knows about a CVE's GitHub issue: where it
@@ -61,10 +63,12 @@ type Inputs struct {
 	BacklogRepository string
 	// SeveritySource names where Advisory.Severity came from, written into the record.
 	SeveritySource string
+	// Consume is the OSERA BOM of the line as published, group:artifact@version, empty before the first one.
+	Consume string
 }
 
-// Fixed is one CVE the gate has promoted a fix for.
-type Fixed struct {
+// FixedEntry is one CVE the gate has promoted a fix for.
+type FixedEntry struct {
 	CVE         string   `json:"cve"`
 	Coordinates []string `json:"coordinates"`
 	SetID       string   `json:"set_id"`
@@ -86,7 +90,7 @@ type Record struct {
 	AsOf          string          `json:"as_of"`
 	Status        string          `json:"status"`
 	InScope       int             `json:"in_scope"`
-	Fixed         []Fixed         `json:"fixed"`
+	Fixed         []FixedEntry    `json:"fixed"`
 	InProgress    []string        `json:"in_progress"`
 	Open          []string        `json:"open"`
 	NotRemediable []NotRemediable `json:"not_remediable"`
@@ -95,12 +99,26 @@ type Record struct {
 	// OutsideBook: known on the line, not in the book, below the bar or unscored. Tracked, no effect on the word.
 	OutsideBook    []Advisory `json:"outside_book"`
 	SeveritySource string     `json:"severity_source"`
+	// Consume is what a bank imports today, the OSERA BOM of the line as group:artifact@version.
+	// Empty until the first promotion.
+	Consume string `json:"consume"`
 }
 
 // Compute derives the record. Nine steps, no I/O.
 func Compute(in Inputs) Record {
-	rec := Record{Line: in.Line, BookVersion: in.BookVersion, AsOf: in.AsOf, SeveritySource: in.SeveritySource,
-		Fixed: []Fixed{}, InProgress: []string{}, Open: []string{}, NotRemediable: []NotRemediable{}, NewSinceBook: []Advisory{}, OutsideBook: []Advisory{}}
+	rec := Record{
+		Line:           in.Line,
+		BookVersion:    in.BookVersion,
+		AsOf:           in.AsOf,
+		SeveritySource: in.SeveritySource,
+		Consume:        in.Consume,
+		Fixed:          []FixedEntry{},
+		InProgress:     []string{},
+		Open:           []string{},
+		NotRemediable:  []NotRemediable{},
+		NewSinceBook:   []Advisory{},
+		OutsideBook:    []Advisory{},
+	}
 
 	// 1. the CVEs in scope: every entry of the book on this line, one CVE once
 	inScope := map[string]bool{}
@@ -111,7 +129,7 @@ func Compute(in Inputs) Record {
 
 	// 2. replay the ledger for this line, oldest first: a promotion fixes its CVEs,
 	//    a retraction of the same set unfixes them, a statement marks a CVE not remediable
-	fixed := map[string]Fixed{}
+	fixed := map[string]FixedEntry{}
 	promotedSets := map[string]ledger.Event{}
 	notRemediable := map[string]NotRemediable{}
 	for _, ev := range in.Ledger.Events {
@@ -122,7 +140,7 @@ func Compute(in Inputs) Record {
 		case "promoted":
 			promotedSets[ev.SetID] = ev
 			for _, cve := range ev.CVEs {
-				fixed[cve] = Fixed{CVE: cve, Coordinates: ev.Coordinates, SetID: ev.SetID, At: ev.At}
+				fixed[cve] = FixedEntry{CVE: cve, Coordinates: ev.Coordinates, SetID: ev.SetID, At: ev.At}
 			}
 		case "retracted":
 			set, known := promotedSets[ev.SetID]
@@ -225,11 +243,19 @@ func Compute(in Inputs) Record {
 		return rec.OutsideBook[i].CVE < rec.OutsideBook[j].CVE
 	})
 
-	// 9. the word: remediated only when nothing is open, nothing in progress and nothing new
-	if len(rec.Open) == 0 && len(rec.InProgress) == 0 && len(rec.NewSinceBook) == 0 {
-		rec.Status = Remediated
-	} else {
-		rec.Status = PartiallyRemediated
-	}
+	// 9. the word: fixed only when nothing is open, nothing in progress and nothing new;
+	//    not fixed when no entry is fixed; in progress otherwise
+	rec.Status = word(rec)
 	return rec
+}
+
+// word derives the line's word from the lists of a record.
+func word(rec Record) string {
+	if len(rec.Open) == 0 && len(rec.InProgress) == 0 && len(rec.NewSinceBook) == 0 {
+		return Fixed
+	}
+	if len(rec.Fixed) == 0 {
+		return NotFixed
+	}
+	return InProgress
 }

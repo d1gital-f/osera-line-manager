@@ -9,16 +9,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/d1gital-f/osera-line-manager/internal/book"
 	"github.com/d1gital-f/osera-line-manager/internal/status"
 )
 
-// The status columns appended to supported-lines.csv. The first six columns are the
-// line as people declared it; these are what the line manager found, rewritten on
+// The status columns of supported-lines.csv. The first six columns are the line as
+// people declared it; these nine are what the line manager found, rewritten on
 // every pass, never edited by hand.
-var statusColumns = []string{
-	"remediation_status", "book_version", "as_of", "in_scope", "fixed", "in_progress", "open",
-	"not_remediable", "new_since_book", "outside_book",
-}
+var statusColumns = book.LineColumns[book.DeclaredColumns:]
 
 // WriteLines rewrites supported-lines.csv with the status columns filled from the records.
 func WriteLines(path string, records []status.Record) error {
@@ -37,7 +35,10 @@ func WriteLines(path string, records []status.Record) error {
 	}
 
 	// 2. the header: the six declared columns, then the status columns
-	header := rows[0][:6]
+	if len(rows[0]) < book.DeclaredColumns {
+		return fmt.Errorf("%s has %d header columns, at least %d expected", path, len(rows[0]), book.DeclaredColumns)
+	}
+	header := append([]string{}, rows[0][:book.DeclaredColumns]...)
 	header = append(header, statusColumns...)
 
 	// 3. one row per line, the declared part kept, the status part from the record
@@ -47,16 +48,25 @@ func WriteLines(path string, records []status.Record) error {
 	}
 	out := [][]string{header}
 	for _, row := range rows[1:] {
-		declared := row[:6]
+		if len(row) < book.DeclaredColumns {
+			return fmt.Errorf("%s row %q has %d columns, at least %d expected", path, row[0], len(row), book.DeclaredColumns)
+		}
+		declared := append([]string{}, row[:book.DeclaredColumns]...)
 		rec, found := byLine[row[0]]
 		if !found {
 			out = append(out, append(declared, make([]string, len(statusColumns))...))
 			continue
 		}
 		out = append(out, append(declared,
-			rec.Status, rec.BookVersion, rec.AsOf,
-			fmt.Sprint(rec.InScope), fmt.Sprint(len(rec.Fixed)), fmt.Sprint(len(rec.InProgress)), fmt.Sprint(len(rec.Open)),
-			fmt.Sprint(len(rec.NotRemediable)), fmt.Sprint(len(rec.NewSinceBook)), fmt.Sprint(len(rec.OutsideBook)),
+			rec.Status,
+			rec.BookVersion,
+			rec.AsOf,
+			fmt.Sprint(rec.InScope),
+			fmt.Sprint(len(rec.Fixed)),
+			fmt.Sprint(len(rec.InProgress)),
+			fmt.Sprint(len(rec.Open)),
+			fmt.Sprint(len(rec.NotRemediable)),
+			rec.Consume,
 		))
 	}
 

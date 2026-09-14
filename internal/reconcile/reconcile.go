@@ -2,7 +2,7 @@
 // Built by ControlPlane for the FINOS OSERA Exchange.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package reconcile is the loop: read the book at its latest tag, the ledger,
+// Package reconcile is the loop: read the backlog at its latest tag, the ledger,
 // the issues and the advisories, compute one record per line, write it. Every
 // pass starts from nothing and is safe to repeat.
 package reconcile
@@ -48,7 +48,6 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 	var lines []book.Line
 	tag, commit := "", ""
 	var err error
-	var coords []book.Coordinate
 	if cfg.LocalDir != "" {
 		tag = cfg.LocalVersion
 		if tag == "" {
@@ -62,12 +61,6 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 		lines, err = book.ReadLines(filepath.Join(cfg.LocalDir, "supported-lines.csv"))
 		if err != nil {
 			return nil, err
-		}
-		if _, statErr := os.Stat(filepath.Join(cfg.LocalDir, "coordinates.csv")); statErr == nil {
-			coords, err = book.ReadCoordinates(filepath.Join(cfg.LocalDir, "coordinates.csv"))
-			if err != nil {
-				return nil, err
-			}
 		}
 	} else {
 		src := source.New(cfg.Owner, cfg.BacklogRepo, cfg.GitHubToken)
@@ -86,13 +79,6 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 		b, lines, err = parse(rawBook, rawLines)
 		if err != nil {
 			return nil, err
-		}
-		// the line's coordinates, when the repository publishes them
-		if rawCoords, coordErr := src.File(ctx, tag, "coordinates.csv"); coordErr == nil {
-			coords, err = parseCoordinates(rawCoords)
-			if err != nil {
-				return nil, err
-			}
 		}
 	}
 
@@ -121,7 +107,7 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 		var adv []status.Advisory
 		if cfg.QueryOSV {
 			osv := advisories.New()
-			adv, err = osv.Known(ctx, book.EntriesForLine(b, coords, ln.ID))
+			adv, err = osv.Known(ctx, b.ForLine(ln.ID))
 			if err != nil {
 				return nil, err
 			}
@@ -142,6 +128,7 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 			Issues:            is,
 			Advisories:        adv,
 			BacklogRepository: cfg.BacklogRepo,
+			Consume:           ln.Consume,
 			SeveritySource:    "NVD CVSS 3.1 base score as recorded at NVD; GitHub's advisory word (CRITICAL 9, HIGH 7, MODERATE 4, LOW 0.1) only where NVD has no score yet",
 		})
 		records = append(records, rec)
@@ -218,19 +205,6 @@ func notInBook(advs []status.Advisory, entries []book.Entry) []status.Advisory {
 		}
 	}
 	return out
-}
-
-func parseCoordinates(raw []byte) ([]book.Coordinate, error) {
-	dir, err := os.MkdirTemp("", "line-manager")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, "coordinates.csv")
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
-		return nil, err
-	}
-	return book.ReadCoordinates(path)
 }
 
 func shortCommit(c string) string {

@@ -11,7 +11,7 @@ import (
 	"github.com/d1gital-f/osera-line-manager/internal/ledger"
 )
 
-const line = "spring-framework-5.3.x"
+const line = "spring-boot-2.7.x"
 
 // the real Wave 1 book, 121 CVEs on the line
 func realBook(t *testing.T) *book.Book {
@@ -37,7 +37,7 @@ func promoted(setID string, cves ...string) ledger.Event {
 	return ledger.Event{Type: "promoted", Line: line, SetID: setID, Coordinates: []string{"org.example:lib@1.0+osera-patch.001"}, CVEs: cves, At: "2026-09-20T10:00:00Z"}
 }
 
-// 1. Day one: nothing promoted, every CVE open, the line is partially remediated.
+// 1. Day one: nothing promoted, every CVE open, the line is not fixed.
 func TestEmptyLedger(t *testing.T) {
 	rec := Compute(inputs(t, ledger.Empty()))
 	if rec.InScope != 121 {
@@ -46,12 +46,12 @@ func TestEmptyLedger(t *testing.T) {
 	if len(rec.Open) != 121 || len(rec.Fixed) != 0 {
 		t.Fatalf("open %d fixed %d, want 121 and 0", len(rec.Open), len(rec.Fixed))
 	}
-	if rec.Status != PartiallyRemediated {
-		t.Fatalf("status %q", rec.Status)
+	if rec.Status != NotFixed {
+		t.Fatalf("status %q, want %q", rec.Status, NotFixed)
 	}
 }
 
-// 2. One release set fixes two CVEs: two fixed, the rest open.
+// 2. One release set fixes two CVEs: two fixed, the rest open, the line is in progress.
 func TestOnePromotion(t *testing.T) {
 	l := &ledger.Ledger{Events: []ledger.Event{promoted("set-1", "CVE-2024-38816", "CVE-2024-38819")}}
 	rec := Compute(inputs(t, l))
@@ -60,6 +60,9 @@ func TestOnePromotion(t *testing.T) {
 	}
 	if rec.Fixed[0].SetID != "set-1" {
 		t.Fatalf("set id %q", rec.Fixed[0].SetID)
+	}
+	if rec.Status != InProgress {
+		t.Fatalf("status %q, want %q", rec.Status, InProgress)
 	}
 }
 
@@ -72,6 +75,9 @@ func TestRetraction(t *testing.T) {
 	rec := Compute(inputs(t, l))
 	if len(rec.Fixed) != 0 || len(rec.Open) != 121 {
 		t.Fatalf("fixed %d open %d after retraction, want 0 and 121", len(rec.Fixed), len(rec.Open))
+	}
+	if rec.Status != NotFixed {
+		t.Fatalf("status %q after retraction, want %q", rec.Status, NotFixed)
 	}
 }
 
@@ -99,7 +105,7 @@ func TestNotRemediable(t *testing.T) {
 	}
 }
 
-// 6. An issue moved into a patch repository is in progress, one in backlog is not.
+// 6. An issue moved into a patch repository is in progress, one in backlog is not. Nothing fixed: the line is not fixed.
 func TestInProgress(t *testing.T) {
 	in := inputs(t, ledger.Empty())
 	in.Issues = []Issue{
@@ -113,9 +119,12 @@ func TestInProgress(t *testing.T) {
 	if len(rec.Open) != 120 {
 		t.Fatalf("open %d, want 120", len(rec.Open))
 	}
+	if rec.Status != NotFixed {
+		t.Fatalf("status %q with nothing fixed, want %q", rec.Status, NotFixed)
+	}
 }
 
-// 7. Everything fixed or declared, nothing new: remediated.
+// 7. Everything fixed or declared, nothing new: fixed.
 func TestRemediated(t *testing.T) {
 	b := realBook(t)
 	var cves []string
@@ -132,7 +141,7 @@ func TestRemediated(t *testing.T) {
 		{Type: "not-remediable", Line: line, CVE: "CVE-2016-1000027", Reason: "upstream will not fix", Producer: "moderne", At: "2026-09-20T10:00:00Z"},
 	}}
 	rec := Compute(inputs(t, l))
-	if rec.Status != Remediated {
+	if rec.Status != Fixed {
 		t.Fatalf("status %q, open %v in progress %v", rec.Status, rec.Open, rec.InProgress)
 	}
 	if len(rec.Fixed) != 120 || len(rec.NotRemediable) != 1 {
@@ -140,7 +149,7 @@ func TestRemediated(t *testing.T) {
 	}
 }
 
-// 8. A new advisory the book does not carry makes a remediated line partial again.
+// 8. A new advisory the book does not carry puts a fixed line back to in progress.
 func TestNewAdvisory(t *testing.T) {
 	b := realBook(t)
 	var cves []string
@@ -157,7 +166,7 @@ func TestNewAdvisory(t *testing.T) {
 		{CVE: "CVE-2026-99998", Library: "org.springframework:spring-core", Version: "5.3.39", Severity: 5.4},
 	}
 	rec := Compute(in)
-	if rec.Status != PartiallyRemediated || len(rec.NewSinceBook) != 1 || rec.NewSinceBook[0].CVE != "CVE-2026-99999" {
+	if rec.Status != InProgress || len(rec.NewSinceBook) != 1 || rec.NewSinceBook[0].CVE != "CVE-2026-99999" {
 		t.Fatalf("status %q new %v", rec.Status, rec.NewSinceBook)
 	}
 	if len(rec.OutsideBook) != 1 || rec.OutsideBook[0].CVE != "CVE-2026-99998" {
@@ -165,7 +174,7 @@ func TestNewAdvisory(t *testing.T) {
 	}
 }
 
-// 10. A CVE below the bar outside the book is tracked and leaves a remediated line remediated.
+// 10. A CVE below the bar outside the book is tracked and leaves a fixed line fixed.
 func TestBelowBarDoesNotCount(t *testing.T) {
 	b := realBook(t)
 	var cves []string
@@ -179,7 +188,7 @@ func TestBelowBarDoesNotCount(t *testing.T) {
 	in := inputs(t, &ledger.Ledger{Events: []ledger.Event{promoted("set-all", cves...)}})
 	in.Advisories = []Advisory{{CVE: "CVE-2026-99998", Library: "org.springframework:spring-core", Version: "5.3.39", Severity: 5.4}}
 	rec := Compute(in)
-	if rec.Status != Remediated || len(rec.OutsideBook) != 1 || len(rec.NewSinceBook) != 0 {
+	if rec.Status != Fixed || len(rec.OutsideBook) != 1 || len(rec.NewSinceBook) != 0 {
 		t.Fatalf("status %q outside %v new %v", rec.Status, rec.OutsideBook, rec.NewSinceBook)
 	}
 }
@@ -187,11 +196,39 @@ func TestBelowBarDoesNotCount(t *testing.T) {
 // 9. A fix recorded for another line, or for a CVE outside the book, does not count.
 func TestOtherLineAndOutOfScope(t *testing.T) {
 	l := &ledger.Ledger{Events: []ledger.Event{
-		{Type: "promoted", Line: "spring-framework-6.2.x", SetID: "s", Coordinates: []string{"x@1"}, CVEs: []string{"CVE-2024-38816"}, At: "t"},
+		{Type: "promoted", Line: "spring-boot-3.5.x", SetID: "s", Coordinates: []string{"x@1"}, CVEs: []string{"CVE-2024-38816"}, At: "t"},
 		promoted("set-2", "CVE-1999-0001"),
 	}}
 	rec := Compute(inputs(t, l))
 	if len(rec.Fixed) != 0 {
 		t.Fatalf("fixed %v, want none", rec.Fixed)
+	}
+}
+
+// 11. The consume column travels from the inputs to the record untouched.
+func TestConsume(t *testing.T) {
+	in := inputs(t, &ledger.Ledger{Events: []ledger.Event{promoted("set-1", "CVE-2024-38816")}})
+	in.Consume = "org.finos.osera:osera-bom-spring-boot-2.7.x@2026.10.07"
+	rec := Compute(in)
+	if rec.Consume != in.Consume {
+		t.Fatalf("consume %q, want %q", rec.Consume, in.Consume)
+	}
+}
+
+// 12. The fifteen column line file reads, the declared columns land in their fields.
+func TestReadLines(t *testing.T) {
+	lines, err := book.ReadLines("testdata/supported-lines.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("%d lines, want 1", len(lines))
+	}
+	l := lines[0]
+	if l.ID != line || l.Ecosystem != "maven" || l.Anchor != "org.springframework.boot:spring-boot-dependencies@2.7.18" {
+		t.Fatalf("line %+v", l)
+	}
+	if len(l.Components) != 2 || l.Scope != "wave-1" || l.Status != "" || l.Consume != "" {
+		t.Fatalf("line %+v", l)
 	}
 }

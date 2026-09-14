@@ -1,9 +1,9 @@
 # osera-line-manager
 
-The line manager keeps an eye on a supported line and says, from facts it does not own, whether the line is remediated. One record per line, what a bank reads:
+The line manager keeps an eye on a supported line and says, from facts it does not own, whether the line is fixed. One record per line, what a bank reads:
 
 ```
-line, book version, as of, status (remediated or partially remediated),
+line, book version, as of, status (not fixed, in progress or fixed),
 in scope, fixed (with the promoted coordinates), in progress, open,
 not remediable (with the producer's reason), new since the book
 ```
@@ -20,7 +20,7 @@ The pure part is done and tested against the real Wave 1 book: `internal/status`
 go run ./cmd/line-manager --book cve-backlog.json --lines supported-lines.csv --ledger ledger.json --book-version v2026.09.09
 ```
 
-Day one, before the first promotion: `partially remediated, in scope 121, fixed 0, open 121`.
+Day one, before the first promotion: `not fixed, in scope 121, fixed 0, open 121`, with the consume column empty.
 
 Not built yet, in this order: the ledger read from the gate's store (today a JSON export), the issues read from GitHub, the advisory read, the loop (a ticker and an event hook, every step idempotent, a write ahead intent so it never reacts to its own writes), the pull request, the status file, the BOM.
 
