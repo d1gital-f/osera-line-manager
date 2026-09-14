@@ -104,7 +104,8 @@ func runCommand(args []string) {
 	grypeBinary := fs.String("grype-binary", env("GRYPE_BINARY", "grype"), "the grype executable (GRYPE_BINARY)")
 	devAdvisories := fs.String("dev-advisories", env("DEV_ADVISORIES", ""), "the dev only advisory file inside the repository, empty in production (DEV_ADVISORIES)")
 	listen := fs.String("listen", env("LISTEN", ":8080"), "the address of the health, status and webhook server (LISTEN)")
-	mavenWorkers := fs.Int("maven-workers", int(envInt("MAVEN_WORKERS", 4)), "how many Maven probes run at once (MAVEN_WORKERS)")
+	mavenWorkers := fs.Int("maven-workers", int(envInt("MAVEN_WORKERS", 4)), "how many Maven runs go at once (MAVEN_WORKERS)")
+	mavenBatchSize := fs.Int("maven-batch-size", int(envInt("MAVEN_BATCH_SIZE", 40)), "how many components one Maven run resolves (MAVEN_BATCH_SIZE)")
 	mavenRepositories := fs.String("maven-repositories", env("MAVEN_REPOSITORIES", ""), "the repositories the resolver reads, comma separated, Central when empty; one under the Nexus address is read with the Nexus account (MAVEN_REPOSITORIES)")
 	dry := fs.Bool("dry", envBool("DRY", false), "compute and log, write nothing to GitHub or Nexus (DRY)")
 	once := fs.Bool("once", false, "one pass, then exit")
@@ -123,6 +124,7 @@ func runCommand(args []string) {
 		WebhookSecret:     os.Getenv("WEBHOOK_SECRET"),
 		MavenRepositories: splitList(*mavenRepositories),
 		MavenWorkers:      *mavenWorkers,
+		MavenBatchSize:    *mavenBatchSize,
 		CacheDir:          *cacheDir,
 		Interval:          *interval,
 		RescanInterval:    *rescan,

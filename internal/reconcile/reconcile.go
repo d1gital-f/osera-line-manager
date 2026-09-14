@@ -62,8 +62,10 @@ type Config struct {
 	// MavenRepositories are the repositories the resolver reads, in order, Central alone when
 	// empty; a repository under the Nexus address is read with the Nexus account.
 	MavenRepositories []string
-	// MavenWorkers is how many Maven probes run at once, four when zero.
+	// MavenWorkers is how many Maven runs go at once, four when zero.
 	MavenWorkers int
+	// MavenBatchSize is how many components one Maven run resolves, forty when zero.
+	MavenBatchSize int
 	// CacheDir holds the scan caches, the evidence cache, the scan stamps and the intent file.
 	CacheDir string
 	// Interval is the time between passes; RescanInterval between two scans of one line's graph.
@@ -133,9 +135,10 @@ func New(ctx context.Context, cfg Config) (*Reconciler, error) {
 	}
 	r.resolver = graph.NewResolver()
 	r.resolver.Workers = cfg.MavenWorkers
+	r.resolver.BatchSize = cfg.MavenBatchSize
 	r.resolver.Progress = func(done, nodes, depth int) {
 		if done == 0 {
-			logf("resolve: %d roots, %d probes at a time", nodes, r.resolver.Workers)
+			logf("resolve: %d roots, %d components per Maven run, %d runs at a time", nodes, r.resolver.BatchSize, r.resolver.Workers)
 			return
 		}
 		logf("resolve: %d probes done, %d nodes known, depth %d", done, nodes, depth)

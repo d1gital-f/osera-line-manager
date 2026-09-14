@@ -30,6 +30,8 @@ type Resolver struct {
 	Servers []Server
 	// Workers is how many probes run at once, four when zero.
 	Workers int
+	// BatchSize is how many components one Maven run resolves, forty when zero.
+	BatchSize int
 	// Progress, when set, is told after every batch: probes done, nodes known, the depth.
 	Progress func(done, nodes, depth int)
 	// Maven is the binary, mvn on PATH when empty.
@@ -105,6 +107,13 @@ func (r *Resolver) repositories() []string {
 		return []string{Central}
 	}
 	return r.RepositoryURLs
+}
+
+func (r *Resolver) batchSize() int {
+	if r.BatchSize <= 0 {
+		return 40
+	}
+	return r.BatchSize
 }
 
 func (r *Resolver) workers() int {
@@ -247,25 +256,110 @@ type probeResult struct {
 	err      string
 }
 
-// probeAll runs one probe per component of the batch, Workers at a time, each in its own directory.
+// probeAll resolves the batch: BatchSize components per Maven run, Workers runs at a time.
 func (r *Resolver) probeAll(ctx context.Context, workDir string, anchor book.Anchor, importBOM bool, batch []Component) ([]probeResult, error) {
 	results := make([]probeResult, len(batch))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, r.workers())
-	for i, c := range batch {
+	size := r.batchSize()
+	for start := 0; start < len(batch); start += size {
+		end := start + size
+		if end > len(batch) {
+			end = len(batch)
+		}
 		wg.Add(1)
-		go func(i int, c Component) {
+		go func(start, end int) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			results[i] = r.probe(ctx, workDir, anchor, importBOM, c)
-		}(i, c)
+			chunk := r.probeBatch(ctx, workDir, anchor, importBOM, batch[start:end])
+			copy(results[start:end], chunk)
+		}(start, end)
 	}
 	wg.Wait()
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 	return results, nil
+}
+
+// probeBatch resolves several components in one Maven run: a throwaway multi module
+// project, one module per component, the reactor run once with --fail-at-end so a
+// module that fails does not stop the others. A module whose tree is missing falls
+// back to the single probe, so nothing is lost when one component breaks the batch.
+func (r *Resolver) probeBatch(ctx context.Context, workDir string, anchor book.Anchor, importBOM bool, chunk []Component) []probeResult {
+	results := make([]probeResult, len(chunk))
+
+	// 1. the project: the parent and one module per component
+	dir, err := os.MkdirTemp(workDir, "batch-")
+	if err != nil {
+		for i, c := range chunk {
+			results[i] = probeResult{parent: c, err: err.Error()}
+		}
+		return results
+	}
+	defer os.RemoveAll(dir)
+	err = r.writeBatch(dir, anchor, importBOM, chunk)
+	if err != nil {
+		for i, c := range chunk {
+			results[i] = probeResult{parent: c, err: err.Error()}
+		}
+		return results
+	}
+
+	// 2. one Maven run for the whole reactor, the tree of every module written next to its POM
+	_ = r.runMaven(ctx, dir, "tree.json", true)
+	if ctx.Err() != nil {
+		for i, c := range chunk {
+			results[i] = probeResult{parent: c, err: ctx.Err().Error()}
+		}
+		return results
+	}
+
+	// 3. every module's tree; a module without one is probed alone
+	for i, c := range chunk {
+		children, err := readTree(filepath.Join(dir, moduleName(i), "tree.json"))
+		if err == nil {
+			results[i] = probeResult{parent: c, children: children}
+			continue
+		}
+		results[i] = r.probe(ctx, workDir, anchor, importBOM, c)
+	}
+	return results
+}
+
+// moduleName is the directory of the i-th component of a batch.
+func moduleName(i int) string {
+	return fmt.Sprintf("m%d", i)
+}
+
+// writeBatch lays the throwaway multi module project out: the parent POM with
+// packaging pom listing the modules, and one module POM per component.
+func (r *Resolver) writeBatch(dir string, anchor book.Anchor, importBOM bool, chunk []Component) error {
+	// 1. the modules
+	for i, c := range chunk {
+		module := filepath.Join(dir, moduleName(i))
+		err := os.MkdirAll(module, 0o755)
+		if err != nil {
+			return err
+		}
+		err = os.WriteFile(filepath.Join(module, "pom.xml"), []byte(r.probePOMNamed(anchor, importBOM, c, "probe-"+moduleName(i))), 0o644)
+		if err != nil {
+			return err
+		}
+	}
+
+	// 2. the parent
+	var b strings.Builder
+	b.WriteString(`<project xmlns="http://maven.apache.org/POM/4.0.0">` + "\n")
+	b.WriteString("<modelVersion>4.0.0</modelVersion>\n")
+	b.WriteString("<groupId>osera.probe</groupId><artifactId>batch</artifactId><version>1</version><packaging>pom</packaging>\n")
+	b.WriteString("<modules>\n")
+	for i := range chunk {
+		fmt.Fprintf(&b, "<module>%s</module>\n", moduleName(i))
+	}
+	b.WriteString("</modules>\n</project>\n")
+	return os.WriteFile(filepath.Join(dir, "pom.xml"), []byte(b.String()), 0o644)
 }
 
 // probe resolves one component as the single dependency of a throwaway POM and
@@ -292,7 +386,7 @@ func (r *Resolver) probe(ctx context.Context, workDir string, anchor book.Anchor
 	out := filepath.Join(dir, "tree.json")
 	var mvnErr string
 	for attempt := 0; attempt < 2; attempt++ {
-		mvnErr = r.runMaven(ctx, dir, out)
+		mvnErr = r.runMaven(ctx, dir, out, false)
 		if mvnErr == "" {
 			break
 		}
@@ -323,10 +417,15 @@ func (r *Resolver) probe(ctx context.Context, workDir string, anchor book.Anchor
 
 // probePOM is the throwaway consumer: the anchor imported when it is a BOM, the component as its only dependency.
 func (r *Resolver) probePOM(anchor book.Anchor, importBOM bool, c Component) string {
+	return r.probePOMNamed(anchor, importBOM, c, "probe")
+}
+
+// probePOMNamed is probePOM with the artifact id chosen, so the modules of a batch are distinct in the reactor.
+func (r *Resolver) probePOMNamed(anchor book.Anchor, importBOM bool, c Component, artifactID string) string {
 	var b strings.Builder
 	b.WriteString(`<project xmlns="http://maven.apache.org/POM/4.0.0">` + "\n")
 	b.WriteString("<modelVersion>4.0.0</modelVersion>\n")
-	b.WriteString("<groupId>osera.probe</groupId><artifactId>probe</artifactId><version>1</version>\n")
+	fmt.Fprintf(&b, "<groupId>osera.probe</groupId><artifactId>%s</artifactId><version>1</version>\n", artifactID)
 	repos := r.repositories()
 	if len(repos) > 1 || repos[0] != Central {
 		b.WriteString("<repositories>\n")
@@ -353,7 +452,7 @@ func (r *Resolver) probePOM(anchor book.Anchor, importBOM bool, c Component) str
 }
 
 // runMaven runs dependency:tree once; the error text is what Maven said, empty on success.
-func (r *Resolver) runMaven(ctx context.Context, dir, out string) string {
+func (r *Resolver) runMaven(ctx context.Context, dir, out string, failAtEnd bool) string {
 	timeout := r.ProbeTimeout
 	if timeout == 0 {
 		timeout = 10 * time.Minute
@@ -364,7 +463,11 @@ func (r *Resolver) runMaven(ctx context.Context, dir, out string) string {
 	if mvn == "" {
 		mvn = "mvn"
 	}
-	args := []string{"-B", "-q", "org.apache.maven.plugins:maven-dependency-plugin:3.8.1:tree", "-DoutputType=json", "-DoutputFile=" + out}
+	args := []string{"-B", "-q"}
+	if failAtEnd {
+		args = append(args, "--fail-at-end")
+	}
+	args = append(args, "org.apache.maven.plugins:maven-dependency-plugin:3.8.1:tree", "-DoutputType=json", "-DoutputFile="+out)
 	// the credentials for a repository that needs them, in a settings file next to the probe
 	if r.needsSettings() {
 		settings := filepath.Join(dir, "settings.xml")
@@ -377,6 +480,9 @@ func (r *Resolver) runMaven(ctx context.Context, dir, out string) string {
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
 	if err == nil {
+		if failAtEnd {
+			return ""
+		}
 		if _, statErr := os.Stat(out); statErr == nil {
 			return ""
 		}
