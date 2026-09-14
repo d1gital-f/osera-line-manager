@@ -102,3 +102,6 @@ func (g *Graph) sortAll() {
 func errorf(format string, a ...any) error {
 	return fmt.Errorf("graph: "+format, a...)
 }
+
+// Folder is where the graphs live in the backlog repository.
+const Folder = "graphs"

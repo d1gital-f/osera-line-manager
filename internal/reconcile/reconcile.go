@@ -110,7 +110,9 @@ type Reconciler struct {
 	scanner  *scan.Scanner
 	grype    *scan.GrypeScanner
 	resolver *graph.Resolver
-	now      func() time.Time
+	// scanFn stands in for the scanner when set, in tests.
+	scanFn func(ctx context.Context, lineID string, components []scan.Component) ([]scan.Finding, error)
+	now    func() time.Time
 	// wake receives one signal per accepted webhook event; the loop coalesces them.
 	wake chan struct{}
 }

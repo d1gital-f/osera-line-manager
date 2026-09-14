@@ -169,6 +169,43 @@ func (c *Clone) Fetch(ctx context.Context) (FetchResult, error) {
 // GraphsDir is the folder of the graphs in the repository, the one folder a fetch keeps.
 const GraphsDir = "graphs"
 
+// Restore puts the given repository paths back as HEAD has them: rewritten when HEAD
+// has the file, removed when it does not.
+func (c *Clone) Restore(paths []string) error {
+	head, err := c.repo.Head()
+	if err != nil {
+		return err
+	}
+	commit, err := c.repo.CommitObject(head.Hash())
+	if err != nil {
+		return err
+	}
+	for _, rel := range paths {
+		path := filepath.Join(c.Dir, filepath.FromSlash(rel))
+		f, err := commit.File(rel)
+		if err != nil {
+			removeErr := os.Remove(path)
+			if removeErr != nil && !os.IsNotExist(removeErr) {
+				return removeErr
+			}
+			continue
+		}
+		content, err := f.Contents()
+		if err != nil {
+			return err
+		}
+		err = os.MkdirAll(filepath.Dir(path), 0o755)
+		if err != nil {
+			return err
+		}
+		err = os.WriteFile(path, []byte(content), 0o644)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // readTree reads every file under a folder of the worktree, keyed by its slash path.
 func (c *Clone) readTree(dir string) map[string][]byte {
 	out := map[string][]byte{}

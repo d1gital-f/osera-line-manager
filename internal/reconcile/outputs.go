@@ -116,13 +116,24 @@ func (r *Reconciler) ensureBOM(ctx context.Context, p *pass, ln book.Line, rec s
 // stageOutputs writes the line rows and one status file per line, and stages
 // them when they changed.
 func (r *Reconciler) stageOutputs(p *pass) error {
-	// 1. the line rows
+	// 1. the guard: a row says what the backlog file says, or it is not written this pass
+	var rows []status.Record
+	for _, rec := range p.records {
+		inFile := len(p.book.ForLine(rec.Line))
+		if rec.InScope != inFile {
+			logf("line %s: discrepancy, the record has %d in scope and the backlog file %d entries, the row and the status file are not written this pass", rec.Line, rec.InScope, inFile)
+			continue
+		}
+		rows = append(rows, rec)
+	}
+
+	// 2. the line rows
 	linesPath := r.path("supported-lines.csv")
 	before, err := os.ReadFile(linesPath)
 	if err != nil {
 		return err
 	}
-	err = WriteLines(linesPath, p.records)
+	err = WriteLines(linesPath, rows)
 	if err != nil {
 		return err
 	}
@@ -137,8 +148,8 @@ func (r *Reconciler) stageOutputs(p *pass) error {
 		}
 	}
 
-	// 2. one status file per line, staged when its content moved
-	for _, rec := range p.records {
+	// 3. one status file per line, staged when its content moved
+	for _, rec := range rows {
 		raw, err := json.MarshalIndent(rec, "", "  ")
 		if err != nil {
 			return err

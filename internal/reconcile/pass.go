@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/d1gital-f/osera-line-manager/internal/book"
@@ -35,6 +37,8 @@ type pass struct {
 	backlogChanged bool
 	// failed names the lines whose graph or scan failed this pass: logged, skipped, retried next pass.
 	failed map[string]error
+	// scanned names the lines scanned this pass; their stamps are written once the pass has committed.
+	scanned []string
 	// own is the intent note found at the start of the pass, nil when none.
 	own     *intent.Intent
 	records []status.Record
@@ -49,6 +53,22 @@ func (r *Reconciler) Once(ctx context.Context) ([]status.Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	records, err := r.run(ctx, p)
+	if err != nil {
+		// a pass that fails after writing into the worktree leaves the repository's own files
+		// as they are on main, the graphs excepted, and no scan stamp: the next pass starts clean
+		discardErr := r.discard(p)
+		if discardErr != nil {
+			logf("discarding the failed pass: %v", discardErr)
+		}
+		return nil, err
+	}
+	return records, nil
+}
+
+// run is the pass after its inputs, steps 2 to 10.
+func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) {
+	var err error
 
 	// 2. the graph of every line, resolved when missing or built from another anchor
 	p.failed = map[string]error{}
@@ -108,7 +128,7 @@ func (r *Reconciler) Once(ctx context.Context) ([]status.Record, error) {
 		p.records = append(p.records, rec)
 	}
 
-	// 7. the line rows and the status files
+	// 7. the line rows and the status files, a row never contradicting the backlog file
 	err = r.stageOutputs(p)
 	if err != nil {
 		return nil, err
@@ -116,6 +136,10 @@ func (r *Reconciler) Once(ctx context.Context) ([]status.Record, error) {
 
 	// 8. the pull request, merged by the line manager, and the tag when the backlog changed
 	err = r.publish(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	err = r.writeStamps(p)
 	if err != nil {
 		return nil, err
 	}
@@ -256,4 +280,28 @@ func short(sha string) string {
 		return sha[:7]
 	}
 	return sha
+}
+
+// discard puts the worktree back as main has it for every file a failed pass wrote,
+// the graphs excepted (a graph is kept, it is expensive and the next pass checks it).
+func (r *Reconciler) discard(p *pass) error {
+	if r.clone == nil {
+		return nil
+	}
+	var paths []string
+	for path := range p.staged {
+		if strings.HasPrefix(path, "graphs/") {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	// the backlog files are written to disk before they are staged, so a failure between
+	// the write and the stage leaves them too: always put the three back
+	for _, path := range []string{"cve-backlog.json", "cve-excluded.json", "cve-backlog.md", "supported-lines.csv"} {
+		if !contains(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	return r.clone.Restore(paths)
 }

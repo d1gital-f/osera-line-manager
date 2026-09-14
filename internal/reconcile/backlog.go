@@ -74,20 +74,7 @@ func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error 
 	if r.cfg.DevAdvisories != "" {
 		devAdvisories = r.path(filepath.FromSlash(r.cfg.DevAdvisories))
 	}
-	var findings []scan.Finding
-	if r.grype != nil {
-		r.grype.DevAdvisories = devAdvisories
-		err = r.grype.UpdateDB(ctx)
-		if err != nil {
-			return fmt.Errorf("line %s: %w", ln.ID, err)
-		}
-		logf("line %s: scanning %d components with grype", ln.ID, len(components))
-		findings, err = r.grype.Scan(ctx, r.path(filepath.FromSlash(graphPath(ln.ID))), components)
-	} else {
-		r.scanner.DevAdvisories = devAdvisories
-		logf("line %s: scanning %d components with the sources", ln.ID, len(components))
-		findings, err = r.scanner.Scan(ctx, components)
-	}
+	findings, err := r.findings(ctx, ln.ID, devAdvisories, components)
 	if err != nil {
 		return fmt.Errorf("line %s: %w", ln.ID, err)
 	}
@@ -108,11 +95,44 @@ func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error 
 		return err
 	}
 
-	// 6. the stamp, not in a dry run
+	// 6. the stamp is remembered and written once the pass has committed: a result that never
+	//    reaches the repository is scanned again next pass
+	p.scanned = append(p.scanned, ln.ID)
+	return nil
+}
+
+// findings runs the scanner the configuration chose, Grype over the graph file or the four
+// sources over the components; a test can put its own function here.
+func (r *Reconciler) findings(ctx context.Context, lineID, devAdvisories string, components []scan.Component) ([]scan.Finding, error) {
+	if r.scanFn != nil {
+		return r.scanFn(ctx, lineID, components)
+	}
+	if r.grype != nil {
+		r.grype.DevAdvisories = devAdvisories
+		err := r.grype.UpdateDB(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("line %s: %w", lineID, err)
+		}
+		logf("line %s: scanning %d components with grype", lineID, len(components))
+		return r.grype.Scan(ctx, r.path(filepath.FromSlash(graphPath(lineID))), components)
+	}
+	r.scanner.DevAdvisories = devAdvisories
+	logf("line %s: scanning %d components with the sources", lineID, len(components))
+	return r.scanner.Scan(ctx, components)
+}
+
+// writeStamps records the scans of a pass that reached the repository (or a dry run's).
+func (r *Reconciler) writeStamps(p *pass) error {
 	if r.cfg.Dry {
 		return nil
 	}
-	return os.WriteFile(r.scanStamp(ln.ID), []byte(r.now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+	for _, lineID := range p.scanned {
+		err := os.WriteFile(r.scanStamp(lineID), []byte(r.now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // mergeScan puts a line's scanned entries into the backlog: an entry already
@@ -221,9 +241,13 @@ func (r *Reconciler) replaceEntries(p *pass, lineID string, entries []book.Entry
 		byKey[entryKey(lineID, e.CVE, e.Library)] = e
 	}
 
-	// 2. in place, remembering whether anything changed
+	// 2. in place, this line's entries only, remembering whether anything changed. Another
+	//    line can carry the same CVE on the same library at its own version: it is not touched.
 	changed := false
 	for i, e := range p.book.Entries {
+		if !contains(e.Lines, lineID) {
+			continue
+		}
 		n, found := byKey[entryKey(lineID, e.CVE, e.Library)]
 		if !found {
 			continue
