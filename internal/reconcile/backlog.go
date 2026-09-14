@@ -51,7 +51,7 @@ func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error 
 		return nil
 	}
 	if p.rules == nil {
-		logf("line %s: no rules file in the repository, the scan is skipped", ln.ID)
+		Lowf("%s: no rules file in the repository, the scan is skipped", ln.ID)
 		return nil
 	}
 
@@ -59,7 +59,7 @@ func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error 
 	g, err := graph.Read(r.path(filepath.FromSlash(graphPath(ln.ID))))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			logf("line %s: no graph yet, nothing to scan", ln.ID)
+			logf("%s: no graph yet, nothing to scan", ln.ID)
 			return nil
 		}
 		return err
@@ -74,15 +74,16 @@ func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error 
 	if r.cfg.DevAdvisories != "" {
 		devAdvisories = r.path(filepath.FromSlash(r.cfg.DevAdvisories))
 	}
+	started := r.now()
 	findings, err := r.findings(ctx, ln.ID, devAdvisories, components)
 	if err != nil {
 		return fmt.Errorf("line %s: %w", ln.ID, err)
 	}
 	split := scan.Apply(ln.ID, findings, p.rules)
 	for _, d := range split.Duplicates {
-		logf("line %s: %s", ln.ID, d)
+		logf("%s: %s", ln.ID, d)
 	}
-	logf("line %s: %d findings, %d applicable, %d excluded", ln.ID, len(findings), len(split.Entries), len(split.Excluded))
+	logf("%s, in %s", scanSummary(ln.ID, findings, split), seconds(r.now().Sub(started)))
 
 	// 4. merged into the backlog, the file's memory kept
 	p.book.Entries = mergeScan(p.book.Entries, ln.ID, split.Entries)
@@ -116,11 +117,11 @@ func (r *Reconciler) findings(ctx context.Context, lineID, devAdvisories string,
 		if err != nil {
 			return nil, fmt.Errorf("line %s: %w", lineID, err)
 		}
-		logf("line %s: scanning %d components with grype", lineID, len(components))
+		logf("%s: scanning %d libraries with grype %s", lineID, len(components), r.grype.Version(ctx))
 		return r.grype.Scan(ctx, r.path(filepath.FromSlash(graphPath(lineID))), components)
 	}
 	r.scanner.DevAdvisories = devAdvisories
-	logf("line %s: scanning %d components with the sources", lineID, len(components))
+	logf("%s: scanning %d libraries with the four sources, OSV, CISA KEV, FIRST EPSS and NVD", lineID, len(components))
 	return r.scanner.Scan(ctx, components)
 }
 
@@ -268,12 +269,12 @@ func (r *Reconciler) replaceEntries(p *pass, lineID string, entries []book.Entry
 	header := scan.Header{Title: p.book.Title, StandardsPack: p.book.StandardsPack, Generated: p.asOf}
 	excluded, err := r.mergeExcluded("", nil)
 	if err != nil {
-		logf("line %s: %v", lineID, err)
+		Lowf("%s: %v", lineID, err)
 		return
 	}
 	err = r.stageBacklog(p, lineID, header, excluded)
 	if err != nil {
-		logf("line %s: %v", lineID, err)
+		Lowf("%s: %v", lineID, err)
 	}
 }
 

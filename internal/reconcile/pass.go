@@ -46,24 +46,45 @@ type pass struct {
 
 // Once runs one pass and returns the records. Ten steps, each safe to repeat.
 func (r *Reconciler) Once(ctx context.Context) ([]status.Record, error) {
-	p := &pass{asOf: r.now().UTC().Format(time.RFC3339), staged: map[string][]byte{}, before: map[string]string{}}
+	r.passes++
+	started := r.now()
+	p := &pass{asOf: started.UTC().Format(time.RFC3339), staged: map[string][]byte{}, before: map[string]string{}}
 
 	// 1. the inputs: the clone at origin's main, the lines, the rules, the intent note
 	err := r.readInputs(ctx, p)
 	if err != nil {
 		return nil, err
 	}
+	Lowf("pass %d starting: backlog at %s, tag %s, %d lines: %s", r.passes, short(p.head), tagWords(p.bookVersion), len(p.lines), lineNames(p.lines))
 	records, err := r.run(ctx, p)
 	if err != nil {
 		// a pass that fails after writing into the worktree leaves the repository's own files
 		// as they are on main, the graphs excepted, and no scan stamp: the next pass starts clean
 		discardErr := r.discard(p)
 		if discardErr != nil {
-			logf("discarding the failed pass: %v", discardErr)
+			Lowf("pass %d: discarding the failed pass: %v", r.passes, discardErr)
 		}
 		return nil, err
 	}
+	Lowf("pass %d done in %s", r.passes, seconds(r.now().Sub(started)))
 	return records, nil
+}
+
+// tagWords names the tag in a log line, or says there is none.
+func tagWords(tag string) string {
+	if tag == "" {
+		return "none"
+	}
+	return tag
+}
+
+// lineNames lists the line ids in a log line.
+func lineNames(lines []book.Line) string {
+	var ids []string
+	for _, ln := range lines {
+		ids = append(ids, ln.ID)
+	}
+	return strings.Join(ids, ", ")
 }
 
 // run is the pass after its inputs, steps 2 to 10.
@@ -76,7 +97,7 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 		err = r.ensureGraph(ctx, p, ln)
 		if err != nil {
 			// one line's resolve failing does not stop the others; it is retried next pass
-			logf("line %s: graph: %v (skipped this pass)", ln.ID, err)
+			Lowf("%s: graph: %v (skipped this pass)", ln.ID, err)
 			p.failed[ln.ID] = err
 		}
 	}
@@ -88,7 +109,7 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 		}
 		err = r.scanLine(ctx, p, ln)
 		if err != nil {
-			logf("line %s: scan: %v (skipped this pass)", ln.ID, err)
+			Lowf("%s: scan: %v (skipped this pass)", ln.ID, err)
 			p.failed[ln.ID] = err
 		}
 	}
@@ -152,7 +173,7 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 
 	// 10. one line per line
 	for _, rec := range p.records {
-		logf("line %s: %s, in scope %d, fixed %d, in progress %d, open %d, not remediable %d, discrepancies %d, consume %q",
+		Lowf("%s: %s, in scope %d, fixed %d, in progress %d, open %d, not remediable %d, discrepancies %d, consume %q",
 			rec.Line, rec.Status, rec.InScope, len(rec.Fixed), len(rec.InProgress), len(rec.Open), len(rec.NotRemediable), len(rec.Discrepancies), rec.Consume)
 	}
 	return p.records, nil
@@ -181,7 +202,6 @@ func (r *Reconciler) readInputs(ctx context.Context, p *pass) error {
 		if err == nil {
 			p.bookVersion = tag
 		}
-		logf("pass: the backlog at %s, latest tag %q", short(p.head), p.bookVersion)
 	} else {
 		p.bookVersion = r.cfg.LocalVersion
 	}
@@ -206,7 +226,6 @@ func (r *Reconciler) readInputs(ctx context.Context, p *pass) error {
 	if err != nil {
 		return err
 	}
-	logf("pass: %d supported lines", len(p.lines))
 
 	// 4. the rules, when the repository carries them
 	p.rules, err = rules.Load(r.path("rules", "prioritisation.yaml"))

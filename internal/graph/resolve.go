@@ -34,6 +34,8 @@ type Resolver struct {
 	BatchSize int
 	// Progress, when set, is told after every batch: probes done, nodes known, the depth.
 	Progress func(done, nodes, depth int)
+	// Logf, when set, is told the detail: every Maven run with its duration, every fallback.
+	Logf func(format string, a ...any)
 	// Maven is the binary, mvn on PATH when empty.
 	Maven string
 	// ProbeTimeout bounds one Maven run, ten minutes when zero.
@@ -116,6 +118,13 @@ func (r *Resolver) batchSize() int {
 	return r.BatchSize
 }
 
+// say logs the detail when a logger was given.
+func (r *Resolver) say(format string, a ...any) {
+	if r.Logf != nil {
+		r.Logf(format, a...)
+	}
+}
+
 func (r *Resolver) workers() int {
 	if r.Workers <= 0 {
 		return 4
@@ -154,6 +163,8 @@ func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Ancho
 	}
 
 	// 2. one build for the whole line, the way a bank builds it: Maven mediates, one version each
+	r.say("%s: one Maven build of the line, %d roots as its dependencies", lineID, len(roots))
+	started := time.Now()
 	tree, why := r.buildLine(ctx, workDir, anchor, importBOM, managed, g.Pins, roots)
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -162,10 +173,12 @@ func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Ancho
 		g.Method = "one build"
 		graphFromTree(g, tree)
 		g.sortAll()
+		r.say("%s: Maven resolved %d libraries in %s", lineID, len(g.Components), time.Since(started).Round(time.Second))
 		return g, nil
 	}
 
 	// 3. the fallback: every root probed alone, breadth first
+	r.say("%s: the single build failed after %s (%s), every root probed alone in batches", lineID, time.Since(started).Round(time.Second), why)
 	g.Method = "batched probes, the single build failed: " + why
 	err = r.resolveByProbes(ctx, g, workDir, anchor, importBOM, roots)
 	if err != nil {
@@ -493,8 +506,16 @@ func (r *Resolver) probeAll(ctx context.Context, workDir string, anchor book.Anc
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			started := time.Now()
 			chunk := r.probeBatch(ctx, workDir, anchor, importBOM, batch[start:end])
 			copy(results[start:end], chunk)
+			failed := 0
+			for _, res := range chunk {
+				if res.err != "" {
+					failed++
+				}
+			}
+			r.say("Maven run: %d libraries resolved in %s, %d could not be", end-start, time.Since(started).Round(time.Second), failed)
 		}(start, end)
 	}
 	wg.Wait()
@@ -544,6 +565,7 @@ func (r *Resolver) probeBatch(ctx context.Context, workDir string, anchor book.A
 			results[i] = probeResult{parent: c, children: children}
 			continue
 		}
+		r.say("%s failed in the batch, resolved alone", c.Key())
 		results[i] = r.probe(ctx, workDir, anchor, importBOM, c)
 	}
 	return results

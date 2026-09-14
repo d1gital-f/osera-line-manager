@@ -27,7 +27,7 @@ func (r *Reconciler) Run(ctx context.Context) error {
 			serverErr <- err
 		}
 	}()
-	logf("listening on %s", server.Addr)
+	logf("listening on %s, a pass every %s", server.Addr, r.cfg.Interval)
 
 	// 2. the first pass, then the ticker and the wake ups
 	r.pass(ctx)
@@ -44,7 +44,7 @@ func (r *Reconciler) Run(ctx context.Context) error {
 		case <-ticker.C:
 			r.pass(ctx)
 		case <-r.wake:
-			logf("a promotion was announced, one more pass")
+			logf("a promotion was announced by the release repository, one more pass")
 			r.pass(ctx)
 		}
 	}
@@ -54,7 +54,7 @@ func (r *Reconciler) Run(ctx context.Context) error {
 func (r *Reconciler) pass(ctx context.Context) {
 	_, err := r.Once(ctx)
 	if err != nil {
-		logf("pass failed: %v", err)
+		Lowf("pass %d failed: %v", r.passes, err)
 	}
 }
 

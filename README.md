@@ -46,6 +46,7 @@ line-manager status --book cve-backlog.json --lines supported-lines.csv --book-v
 | `--dev-advisories` | `SCANNER` (grype, the default: grype over the graph file; or sources: OSV, CISA KEV, FIRST EPSS and NVD one by one, kept for comparison), `GRYPE_BINARY`, `DEV_ADVISORIES` | | the dev only advisory file inside the repository, empty in production |
 | | `NVD_API_KEY` | | lifts NVD's public pace, environment only |
 | `--listen` | `LISTEN` | `:8080` | the health, status and webhook server |
+| `--log-level` | `LOG_LEVEL` | `medium` | how much the log says: `low`, `medium` or `high`, see The log |
 | `--dry` | `DRY` | `false` | compute and log, write nothing to GitHub or Nexus |
 | `--once` | | | one pass, then exit |
 | `--local` | | | a directory with the backlog files, read instead of the clone; no GitHub, no Nexus |
@@ -57,6 +58,14 @@ line-manager run --dev-advisories advisories/dev.json --dry --once
 ```
 
 The server answers `GET /healthz`, `GET /status/<line_id>.json` from the clone, and `POST /webhook` for Nexus, every delivery checked against the secret. An accepted event on the release repository starts one more pass.
+
+## The log
+
+Every line is the full timestamp in RFC 3339 UTC, a space, one fact. Three levels, `LOG_LEVEL` or `--log-level`:
+
+- `low`: the pass start and end, the per line summary, every write to GitHub or Nexus (commit, pull request, merge, tag, issue, BOM), every error and discrepancy.
+- `medium`, the default: `low` plus one line per step: the graph built or kept, the scan summary, the board, the release repository, `validate` pending, green or red.
+- `high`: `medium` plus the detail: every Maven run with its duration, every fallback, every evidence file with its CVEs, every staged file, every comment, the Grype database update, the dev advisory file.
 
 ## One pass, ten steps
 

@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"strconv"
@@ -104,6 +103,7 @@ func runCommand(args []string) {
 	grypeBinary := fs.String("grype-binary", env("GRYPE_BINARY", "grype"), "the grype executable (GRYPE_BINARY)")
 	devAdvisories := fs.String("dev-advisories", env("DEV_ADVISORIES", ""), "the dev only advisory file inside the repository, empty in production (DEV_ADVISORIES)")
 	listen := fs.String("listen", env("LISTEN", ":8080"), "the address of the health, status and webhook server (LISTEN)")
+	logLevel := fs.String("log-level", env("LOG_LEVEL", "medium"), "how much the log says: low, medium or high (LOG_LEVEL)")
 	mavenWorkers := fs.Int("maven-workers", int(envInt("MAVEN_WORKERS", 4)), "how many Maven runs go at once (MAVEN_WORKERS)")
 	mavenBatchSize := fs.Int("maven-batch-size", int(envInt("MAVEN_BATCH_SIZE", 40)), "how many components one Maven run resolves (MAVEN_BATCH_SIZE)")
 	mavenRepositories := fs.String("maven-repositories", env("MAVEN_REPOSITORIES", ""), "the repositories the resolver reads, comma separated, Central when empty; one under the Nexus address is read with the Nexus account (MAVEN_REPOSITORIES)")
@@ -144,7 +144,10 @@ func runCommand(args []string) {
 			fail(fmt.Errorf("NEXUS_URL is required"))
 		}
 	}
-	log.Printf("line-manager %s: %s/%s, board %d, %s, every %s, rescan every %s, dry %v", version, cfg.Owner, cfg.Repo, cfg.BoardNumber, cfg.Nexus.URL, cfg.Interval, cfg.RescanInterval, cfg.Dry)
+	level, err := reconcile.ParseLevel(*logLevel)
+	fail(err)
+	reconcile.SetLevel(level)
+	reconcile.Lowf("line-manager %s starting: %s/%s, board %d, %s, a pass every %s, a rescan every %s, log %s, dry %v", version, cfg.Owner, cfg.Repo, cfg.BoardNumber, cfg.Nexus.URL, cfg.Interval, cfg.RescanInterval, level, cfg.Dry)
 
 	// 2. the reconciler
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

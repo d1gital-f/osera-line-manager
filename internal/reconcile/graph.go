@@ -70,11 +70,11 @@ func (r *Reconciler) ensureGraph(ctx context.Context, p *pass, ln book.Line) err
 		return err
 	}
 	if !needed {
-		logf("line %s: graph present for %s, kept", ln.ID, ln.Anchor)
+		logf("%s: graph kept, built from the same anchor %s and the same rule", ln.ID, ln.Anchor)
 		return nil
 	}
 	if ln.Ecosystem != "maven" {
-		logf("line %s: ecosystem %q has no resolver yet, the graph is not built", ln.ID, ln.Ecosystem)
+		Lowf("%s: ecosystem %q has no resolver yet, the graph is not built", ln.ID, ln.Ecosystem)
 		return nil
 	}
 
@@ -85,9 +85,17 @@ func (r *Reconciler) ensureGraph(ctx context.Context, p *pass, ln book.Line) err
 	}
 	rule := graph.RuleFor(anchor, ln.Components)
 	if rule.Wide() {
-		logf("line %s: resolving %s, no components declared, every managed artifact is a root", ln.ID, anchor)
+		logf("%s: building the dependency graph from %s, no components declared, every managed artifact is a root", ln.ID, anchor)
 	} else {
-		logf("line %s: resolving %s, roots from the groups %s", ln.ID, anchor, strings.Join(rule.Groups, ", "))
+		logf("%s: building the dependency graph from %s, the roots in the groups %s", ln.ID, anchor, strings.Join(rule.Groups, ", "))
+	}
+	started := r.now()
+	r.resolver.Progress = func(done, nodes, depth int) {
+		if done == 0 {
+			logf("%s: %d roots, %d libraries per Maven run, %d runs at a time", ln.ID, nodes, r.resolver.BatchSize, r.resolver.Workers)
+			return
+		}
+		highf("%s: %d libraries resolved so far, %d known, now at depth %d", ln.ID, done, nodes, depth+1)
 	}
 	work := r.cachePath(filepath.Join("resolve", ln.ID))
 	err = os.MkdirAll(work, 0o755)
@@ -118,9 +126,12 @@ func (r *Reconciler) ensureGraph(ctx context.Context, p *pass, ln book.Line) err
 		for _, pin := range g.Pins {
 			pins = append(pins, pin.String())
 		}
-		logf("line %s: the declared components pin %s", ln.ID, strings.Join(pins, ", "))
+		logf("%s: the declared components pin %s", ln.ID, strings.Join(pins, ", "))
 	}
-	logf("line %s: graph built by %s, %d components, %d roots, %d unresolved", ln.ID, g.Method, len(g.Components), len(g.Roots), len(g.Unresolved))
+	logf("%s: graph written by %s, %d libraries, %d roots, %d unresolved, in %s", ln.ID, g.Method, len(g.Components), len(g.Roots), len(g.Unresolved), seconds(r.now().Sub(started)))
+	for key, why := range g.Unresolved {
+		highf("%s: unresolved %s: %s", ln.ID, key, why)
+	}
 	return r.stage(p, ln.ID, graphPath(ln.ID), raw)
 }
 

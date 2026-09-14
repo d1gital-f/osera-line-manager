@@ -89,7 +89,7 @@ func (r *Reconciler) ensureBOM(ctx context.Context, p *pass, ln book.Line, rec s
 
 	// 3. the upload, the intent written first, not in a dry run
 	if r.cfg.Dry {
-		logf("line %s: dry run, would upload %s with %d pins", ln.ID, b.Coordinate(), len(b.Dependencies))
+		logf("%s: dry run, would upload the BOM %s with %d pins", ln.ID, b.Coordinate(), len(b.Dependencies))
 	} else {
 		err = intent.Write(r.cachePath("intent.json"), intent.Intent{Kind: "bom", Line: ln.ID, Ref: b.Coordinate()})
 		if err != nil {
@@ -99,7 +99,7 @@ func (r *Reconciler) ensureBOM(ctx context.Context, p *pass, ln book.Line, rec s
 		if err != nil {
 			return rec, err
 		}
-		logf("line %s: uploaded %s with %d pins", ln.ID, b.Coordinate(), len(b.Dependencies))
+		Lowf("%s: BOM %s built with %d pins, uploaded to %s", ln.ID, b.Coordinate(), len(b.Dependencies), r.cfg.Nexus.ReleaseRepository)
 	}
 
 	// 4. the file staged, the coordinate on the record once it is really there
@@ -121,7 +121,7 @@ func (r *Reconciler) stageOutputs(p *pass) error {
 	for _, rec := range p.records {
 		inFile := len(p.book.ForLine(rec.Line))
 		if rec.InScope != inFile {
-			logf("line %s: discrepancy, the record has %d in scope and the backlog file %d entries, the row and the status file are not written this pass", rec.Line, rec.InScope, inFile)
+			Lowf("%s: discrepancy, the record has %d in scope and the backlog file %d entries, the row and the status file are not written this pass", rec.Line, rec.InScope, inFile)
 			continue
 		}
 		rows = append(rows, rec)
@@ -194,6 +194,7 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
+	highf("staged %d files for the commit: %s", len(paths), strings.Join(paths, ", "))
 	if r.cfg.Dry || r.clone == nil {
 		logf("dry run, would commit %s", strings.Join(paths, ", "))
 		return nil
@@ -217,28 +218,31 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 	if err != nil {
 		return err
 	}
-	logf("committed %s on %s", commit.SHA[:7], branch)
+	Lowf("committed %s on %s%s", commit.SHA[:7], branch, r.verifiedWords(ctx, commit.SHA))
 
 	// 2. the pull request and its checks
 	number, err := r.api.OpenPullRequest(ctx, r.cfg.Owner, r.cfg.Repo, branch, repo.Branch, "Line manager: "+strings.Join(p.changedLines, ", "), message)
 	if err != nil {
 		return err
 	}
+	Lowf("pull request #%d opened for %s", number, branch)
+	waited := r.now()
 	green, err := r.waitForChecks(ctx, commit.SHA)
 	if err != nil {
 		return err
 	}
 	if !green {
-		logf("pull request #%d left open, validate is not green", number)
+		logf("validate: red after %s, pull request #%d left open for a person", seconds(r.now().Sub(waited)), number)
 		return r.api.Comment(ctx, r.cfg.Owner, r.cfg.Repo, number, "validate is not green on "+commit.SHA[:7]+", the line manager leaves this pull request for a person.")
 	}
+	logf("validate: green after %s", seconds(r.now().Sub(waited)))
 
 	// 3. the merge, the fetch, the intent noted on the new head
 	err = r.api.MergePullRequest(ctx, r.cfg.Owner, r.cfg.Repo, number)
 	if err != nil {
 		return err
 	}
-	logf("merged pull request #%d", number)
+	Lowf("merged pull request #%d", number)
 	err = r.auth(ctx)
 	if err != nil {
 		return err
@@ -269,8 +273,20 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 	if err != nil {
 		return err
 	}
-	logf("tagged %s at %s", name, head[:7])
+	Lowf("tagged %s at %s", name, head[:7])
 	return nil
+}
+
+// verifiedWords says whether GitHub verified the commit it just made, in a log line.
+func (r *Reconciler) verifiedWords(ctx context.Context, sha string) string {
+	verified, err := r.api.Verified(ctx, r.cfg.Owner, r.cfg.Repo, sha)
+	if err != nil {
+		return ""
+	}
+	if verified {
+		return " (verified by GitHub)"
+	}
+	return " (not verified by GitHub)"
 }
 
 // tagName is v followed by the date, with .2, .3 when the date is taken.
@@ -299,6 +315,7 @@ func (r *Reconciler) waitForChecks(ctx context.Context, sha string) (bool, error
 		timeout = 10 * time.Minute
 	}
 	deadline := r.now().Add(timeout)
+	announced := false
 	for {
 		checks, err := r.api.Checks(ctx, r.cfg.Owner, r.cfg.Repo, sha)
 		if err != nil {
@@ -307,6 +324,10 @@ func (r *Reconciler) waitForChecks(ctx context.Context, sha string) (bool, error
 
 		// 1. the named check must exist: GitHub creates the check run a few seconds
 		//    after the pull request opens, and no check at all is not green
+		if !announced {
+			logf("validate: pending")
+			announced = true
+		}
 		pending := false
 		found := false
 		for _, c := range checks {
@@ -370,7 +391,7 @@ func (r *Reconciler) settleIssues(ctx context.Context, p *pass, issues []status.
 			}
 			done[card.Number] = true
 			if r.cfg.Dry || r.api == nil {
-				logf("dry run, would %s #%d in %s: %s", verb(reopen), card.Number, card.Repository, comment)
+				logf("dry run, would %s issue #%d in %s: %s", verb(reopen), card.Number, card.Repository, comment)
 				continue
 			}
 			var err error
@@ -382,7 +403,8 @@ func (r *Reconciler) settleIssues(ctx context.Context, p *pass, issues []status.
 			if err != nil {
 				return err
 			}
-			logf("%s #%d in %s", verb(reopen), card.Number, card.Repository)
+			Lowf("%sd issue #%d in %s", verb(reopen), card.Number, card.Repository)
+			highf("comment on #%d: %s", card.Number, comment)
 		}
 	}
 	return nil

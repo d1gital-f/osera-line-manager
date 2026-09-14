@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/d1gital-f/osera-line-manager/internal/board"
 	"github.com/d1gital-f/osera-line-manager/internal/bom"
@@ -27,8 +28,9 @@ func (r *Reconciler) readBoard(ctx context.Context) ([]status.Issue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading the board: %w", err)
 	}
-	logf("board: %d cards", len(cards))
-	return board.Issues(cards, r.cfg.Repo), nil
+	issues := board.Issues(cards, r.cfg.Repo)
+	logf("%s", boardSummary(issues, r.cfg.Repo))
+	return issues, nil
 }
 
 // evidenceCache remembers the evidence read for each coordinate across passes,
@@ -68,6 +70,8 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 	// 3. one promotion per coordinate, the evidence read once
 	var out []status.Promotion
 	read := 0
+	patched := 0
+	withEvidence := 0
 	for _, c := range coords {
 		if ownUpload(p.own, c) || c.Group == bom.Group {
 			out = append(out, status.Promotion{Coordinate: c})
@@ -77,6 +81,7 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 			out = append(out, status.Promotion{Coordinate: c})
 			continue
 		}
+		patched++
 		key := c.String()
 		ev, known := cache.Evidence[key]
 		if !known && !cache.None[key] {
@@ -87,9 +92,14 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 					return nil, err
 				}
 				cache.None[key] = true
+				highf("release repository: %s has no evidence file", key)
 			} else {
 				cache.Evidence[key] = ev
 			}
+		}
+		if ev != nil {
+			withEvidence++
+			highf("release repository: %s fixes %s, producer %s", key, strings.Join(ev.CVEs(), ", "), ev.Producer)
 		}
 		out = append(out, status.Promotion{Coordinate: c, Evidence: ev})
 	}
@@ -105,7 +115,7 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 			return nil, err
 		}
 	}
-	logf("release repository: %d coordinates, %d evidence files read", len(coords), read)
+	logf("release repository: %d coordinates, %d patched, %d with an evidence file, %d read this pass", len(coords), patched, withEvidence, read)
 	return out, nil
 }
 

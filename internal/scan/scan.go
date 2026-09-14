@@ -75,6 +75,8 @@ type Scanner struct {
 	KEVMaxAge time.Duration
 	// Now is the clock, replaceable in tests.
 	Now func() time.Time
+	// Logf, when set, is told what the sources answered.
+	Logf func(format string, a ...any)
 }
 
 // New returns a scanner on the public sources, paced for NVD's public limit,

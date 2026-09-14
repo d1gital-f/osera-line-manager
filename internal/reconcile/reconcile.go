@@ -13,7 +13,6 @@ package reconcile
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -115,6 +114,8 @@ type Reconciler struct {
 	now    func() time.Time
 	// wake receives one signal per accepted webhook event; the loop coalesces them.
 	wake chan struct{}
+	// passes counts the passes since the start, for the log.
+	passes int
 }
 
 // New builds the clients from the configuration. Nothing is read yet.
@@ -138,13 +139,11 @@ func New(ctx context.Context, cfg Config) (*Reconciler, error) {
 	r.resolver = graph.NewResolver()
 	r.resolver.Workers = cfg.MavenWorkers
 	r.resolver.BatchSize = cfg.MavenBatchSize
-	r.resolver.Progress = func(done, nodes, depth int) {
-		if done == 0 {
-			logf("resolve: %d roots, %d components per Maven run, %d runs at a time", nodes, r.resolver.BatchSize, r.resolver.Workers)
-			return
-		}
-		logf("resolve: %d probes done, %d nodes known, depth %d", done, nodes, depth)
+	r.resolver.Logf = highf
+	if r.grype != nil {
+		r.grype.Logf = highf
 	}
+	r.scanner.Logf = highf
 	if len(cfg.MavenRepositories) > 0 {
 		r.resolver.RepositoryURLs = cfg.MavenRepositories
 		for _, u := range cfg.MavenRepositories {
@@ -228,9 +227,4 @@ func (r *Reconciler) path(parts ...string) string {
 // cachePath joins a name onto the cache directory.
 func (r *Reconciler) cachePath(name string) string {
 	return filepath.Join(r.cfg.CacheDir, name)
-}
-
-// logf is the one logger, one line per step.
-func logf(format string, a ...any) {
-	log.Printf(format, a...)
 }

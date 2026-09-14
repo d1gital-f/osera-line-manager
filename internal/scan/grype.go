@@ -35,6 +35,17 @@ type GrypeScanner struct {
 	Timeout time.Duration
 	// Now is the clock, replaceable in tests.
 	Now func() time.Time
+	// Logf, when set, is told what grype does: the database, the dev advisory file.
+	Logf func(format string, a ...any)
+	// version remembers what the binary answered, asked once.
+	version string
+}
+
+// say logs when a logger was given.
+func (g *GrypeScanner) say(format string, a ...any) {
+	if g.Logf != nil {
+		g.Logf(format, a...)
+	}
 }
 
 // NewGrype returns a scanner on the grype binary with the database under dbDir.
@@ -83,6 +94,7 @@ func (g *GrypeScanner) NeedsUpdate() bool {
 func (g *GrypeScanner) UpdateDB(ctx context.Context) error {
 	// 1. only when needed
 	if !g.NeedsUpdate() {
+		g.say("grype: database current, %s", g.DBStatus(ctx))
 		return nil
 	}
 	err := os.MkdirAll(g.DBDir, 0o755)
@@ -90,7 +102,9 @@ func (g *GrypeScanner) UpdateDB(ctx context.Context) error {
 		return err
 	}
 
-	// 2. the update
+	// 2. the update, a few hundred megabytes the first time
+	g.say("grype: updating the vulnerability database under %s", g.DBDir)
+	started := g.Now()
 	ctx, cancel := context.WithTimeout(ctx, g.timeout())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, g.binary(), "db", "update")
@@ -99,9 +113,48 @@ func (g *GrypeScanner) UpdateDB(ctx context.Context) error {
 	if err != nil {
 		return errorf("grype db update: %v: %s", err, lastLines(output))
 	}
+	g.say("grype: database updated in %s, %s", g.Now().Sub(started).Round(time.Second), g.DBStatus(ctx))
 
 	// 3. the stamp
 	return os.WriteFile(g.stampPath(), []byte(g.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+}
+
+// DBStatus asks grype what database it has, one line: what "grype db status"
+// prints, joined. Empty when it cannot say.
+func (g *GrypeScanner) DBStatus(ctx context.Context) string {
+	cmd := exec.CommandContext(ctx, g.binary(), "db", "status")
+	cmd.Env = g.env()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "database status unknown"
+	}
+	var parts []string
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			parts = append(parts, strings.Join(strings.Fields(line), " "))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// Version asks the binary once what version it is, "unknown" when it cannot say.
+func (g *GrypeScanner) Version(ctx context.Context) string {
+	if g.version != "" {
+		return g.version
+	}
+	cmd := exec.CommandContext(ctx, g.binary(), "version", "-o", "raw")
+	cmd.Env = g.env()
+	output, err := cmd.Output()
+	if err != nil {
+		g.version = "unknown"
+		return g.version
+	}
+	g.version = strings.TrimSpace(string(output))
+	if g.version == "" {
+		g.version = "unknown"
+	}
+	return g.version
 }
 
 func (g *GrypeScanner) timeout() time.Duration {
@@ -325,6 +378,9 @@ func (g *GrypeScanner) devFindings(components []Component) ([]Finding, error) {
 	records, err := s.devAdvisories(distinctComponents(components), hits)
 	if err != nil {
 		return nil, err
+	}
+	if g.DevAdvisories != "" {
+		g.say("%s: %d dev advisory records read next to grype", g.DevAdvisories, len(records))
 	}
 
 	// 2. one finding per record per component
