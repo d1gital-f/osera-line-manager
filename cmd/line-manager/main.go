@@ -102,7 +102,7 @@ func runCommand(args []string) {
 	rescan := fs.Duration("rescan-interval", envDuration("RESCAN_INTERVAL", 7*24*time.Hour), "time between two scans of one line (RESCAN_INTERVAL)")
 	devAdvisories := fs.String("dev-advisories", env("DEV_ADVISORIES", ""), "the dev only advisory file inside the repository, empty in production (DEV_ADVISORIES)")
 	listen := fs.String("listen", env("LISTEN", ":8080"), "the address of the health, status and webhook server (LISTEN)")
-	mavenWorkers := fs.Int("maven-workers", envInt("MAVEN_WORKERS", 4), "how many Maven probes run at once (MAVEN_WORKERS)")
+	mavenWorkers := fs.Int("maven-workers", int(envInt("MAVEN_WORKERS", 4)), "how many Maven probes run at once (MAVEN_WORKERS)")
 	mavenRepositories := fs.String("maven-repositories", env("MAVEN_REPOSITORIES", ""), "the repositories the resolver reads, comma separated, Central when empty; one under the Nexus address is read with the Nexus account (MAVEN_REPOSITORIES)")
 	dry := fs.Bool("dry", envBool("DRY", false), "compute and log, write nothing to GitHub or Nexus (DRY)")
 	once := fs.Bool("once", false, "one pass, then exit")

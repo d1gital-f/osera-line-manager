@@ -148,6 +148,9 @@ func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Ancho
 		queue = append(queue, c)
 	}
 	done := 0
+	if r.Progress != nil {
+		r.Progress(0, len(nodes), 0)
+	}
 	for depth := 0; len(queue) > 0; depth++ {
 		batch := queue
 		queue = nil

@@ -125,6 +125,10 @@ func New(ctx context.Context, cfg Config) (*Reconciler, error) {
 	r.resolver = graph.NewResolver()
 	r.resolver.Workers = cfg.MavenWorkers
 	r.resolver.Progress = func(done, nodes, depth int) {
+		if done == 0 {
+			logf("resolve: %d roots, %d probes at a time", nodes, r.resolver.Workers)
+			return
+		}
 		logf("resolve: %d probes done, %d nodes known, depth %d", done, nodes, depth)
 	}
 	if len(cfg.MavenRepositories) > 0 {

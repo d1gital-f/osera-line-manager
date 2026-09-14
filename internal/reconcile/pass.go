@@ -157,6 +157,7 @@ func (r *Reconciler) readInputs(ctx context.Context, p *pass) error {
 		if err == nil {
 			p.bookVersion = tag
 		}
+		logf("pass: the backlog at %s, latest tag %q", short(p.head), p.bookVersion)
 	} else {
 		p.bookVersion = r.cfg.LocalVersion
 	}
@@ -181,6 +182,7 @@ func (r *Reconciler) readInputs(ctx context.Context, p *pass) error {
 	if err != nil {
 		return err
 	}
+	logf("pass: %d supported lines", len(p.lines))
 
 	// 4. the rules, when the repository carries them
 	p.rules, err = rules.Load(r.path("rules", "prioritisation.yaml"))
@@ -246,4 +248,12 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// short is the first seven characters of a commit id, the whole id when shorter.
+func short(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
 }

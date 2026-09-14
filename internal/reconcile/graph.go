@@ -55,6 +55,7 @@ func (r *Reconciler) ensureGraph(ctx context.Context, p *pass, ln book.Line) err
 		return err
 	}
 	if !needed {
+		logf("line %s: graph present for %s, kept", ln.ID, ln.Anchor)
 		return nil
 	}
 	if ln.Ecosystem != "maven" {
