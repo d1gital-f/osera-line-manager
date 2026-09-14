@@ -233,3 +233,20 @@ func TestPut(t *testing.T) {
 		t.Fatalf("first call %s", seen[0])
 	}
 }
+
+// The two ratified forms of a patched version split the way the fitness library splits them.
+func TestNewCoordinateBothForms(t *testing.T) {
+	cases := []struct{ version, base, patch string }{
+		{"2.14.2+osera-patch.001", "2.14.2", "001"},
+		{"5.3.39.1-osera-00001", "5.3.39", "00001"},
+		{"5.6.15.Final-osera-00001", "5.6.15.Final", "00001"},
+		{"9.0.83", "", ""},
+		{"1.0-osera-x", "", ""},
+	}
+	for _, c := range cases {
+		got := NewCoordinate("g", "a", c.version)
+		if got.Base != c.base || got.Patch != c.patch {
+			t.Fatalf("%s: base %q patch %q, want %q %q", c.version, got.Base, got.Patch, c.base, c.patch)
+		}
+	}
+}

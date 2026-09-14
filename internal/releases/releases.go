@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -64,15 +65,57 @@ type Coordinate struct {
 	Assets []string
 }
 
-// NewCoordinate builds a coordinate and splits its version by REL-003.
+// NewCoordinate builds a coordinate and splits its version by REL-003, the two
+// ratified forms of OSERA-SP-0.1.0, the same rule the fitness library applies:
+//
+//	generic  2.14.2+osera-patch.001    -> base 2.14.2,       patch 001
+//	Java     5.3.39.1-osera-00001      -> base 5.3.39,       patch 00001  (REL-003-JAVA, numeric base, the OSGi qualifier dropped)
+//	Java     5.6.15.Final-osera-00001  -> base 5.6.15.Final, patch 00001  (qualified base)
 func NewCoordinate(group, artifact, version string) Coordinate {
 	c := Coordinate{Group: group, Artifact: artifact, Version: version}
+
+	// 1. the generic form: everything before the separator is the base
 	before, after, found := strings.Cut(version, PatchSeparator)
 	if found && before != "" && after != "" {
 		c.Base = before
 		c.Patch = after
+		return c
 	}
+
+	// 2. the Java form: the -osera-NNNNN suffix is the patch number
+	i := strings.LastIndex(version, javaSeparator)
+	if i <= 0 {
+		return c
+	}
+	base := version[:i]
+	patch := version[i+len(javaSeparator):]
+	if patch == "" || !allDigits(patch) {
+		return c
+	}
+
+	// 3. a numeric base with a fourth component: the qualifier the patch added, dropped
+	if numericFour.MatchString(base) {
+		base = base[:strings.LastIndex(base, ".")]
+	}
+	c.Base = base
+	c.Patch = patch
 	return c
+}
+
+// javaSeparator is what REL-003-JAVA puts before the patch number: 5.3.39.1-osera-00001.
+const javaSeparator = "-osera-"
+
+// numericFour matches a base of four numeric components, 5.3.39.1, where the last is the patch's OSGi qualifier.
+var numericFour = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$`)
+
+// allDigits says whether a string is digits only.
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // String is the coordinate as the backlog writes it, group:artifact@version.
