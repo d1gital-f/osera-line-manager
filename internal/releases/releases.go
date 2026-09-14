@@ -9,6 +9,7 @@
 package releases
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -236,4 +237,35 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 		return fmt.Errorf("GET %s: HTTP %d", path, resp.StatusCode)
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(out)
+}
+
+// Put uploads one file into a repository at a Maven path, with the client's
+// credentials. A 2xx is success and so is a 409: the path exists already
+// (ALLOW_ONCE), the file is there, which is what was wanted.
+func (c *Client) Put(ctx context.Context, repository, path string, body []byte, contentType string) error {
+	// 1. the request
+	url := fmt.Sprintf("%s/repository/%s/%s", c.BaseURL, repository, strings.TrimPrefix(path, "/"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	if c.User != "" {
+		req.SetBasicAuth(c.User, c.Pass)
+	}
+	req.Header.Set("Content-Type", contentType)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("PUT %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBody))
+
+	// 2. the answer
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	if resp.StatusCode == http.StatusConflict {
+		return nil
+	}
+	return fmt.Errorf("PUT %s: HTTP %d", path, resp.StatusCode)
 }

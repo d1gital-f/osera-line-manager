@@ -200,3 +200,36 @@ func TestWebhookNotMaven(t *testing.T) {
 		t.Fatal("the listener was called for a raw component")
 	}
 }
+
+// 8. Put: the path under the repository, basic auth, a 409 treated as success, a 403 as an error.
+func TestPut(t *testing.T) {
+	var seen []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, _, _ := r.BasicAuth()
+		seen = append(seen, r.Method+" "+r.URL.Path+" as "+user)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "exists.pom"):
+			w.WriteHeader(http.StatusConflict)
+		case strings.HasSuffix(r.URL.Path, "refused.pom"):
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusCreated)
+		}
+	}))
+	defer server.Close()
+	c := New(server.URL, "line-manager", "secret")
+	c.HTTP = server.Client()
+	ctx := context.Background()
+	if err := c.Put(ctx, "osera-releases-maven-01", "/org/finos/osera/x/1/new.pom", []byte("<project/>"), "application/xml"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Put(ctx, "osera-releases-maven-01", "org/finos/osera/x/1/exists.pom", []byte("<project/>"), "application/xml"); err != nil {
+		t.Fatalf("a 409 must be success: %v", err)
+	}
+	if err := c.Put(ctx, "osera-releases-maven-01", "org/finos/osera/x/1/refused.pom", []byte("<project/>"), "application/xml"); err == nil {
+		t.Fatal("a 403 went unnoticed")
+	}
+	if seen[0] != "PUT /repository/osera-releases-maven-01/org/finos/osera/x/1/new.pom as line-manager" {
+		t.Fatalf("first call %s", seen[0])
+	}
+}

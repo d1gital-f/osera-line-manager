@@ -43,3 +43,4 @@ A plain Go service in the shape of a controller: one reconcile function per line
 | `internal/graph` | the resolve: the anchor's managed artifacts as roots, one Maven probe per artifact inside the pod, breadth first; the graph as CycloneDX 1.6, written, read back and checked |
 | `internal/repo` | the backlog repository: a local clone fetched and fast forwarded (never merged, never rebased), the App's installation token, and every write through the git database API as the App so GitHub signs the commit: commit, pull request, merge, tag, issue close |
 | `internal/intent` | the write ahead note left before every write outside the process, so the line manager never reacts to its own writes |
+| `internal/bom` | the OSERA BOM of a line: one POM pinning every promoted coordinate that made an entry fixed, one per line, the version the publication date, uploaded with its checksums into the release repository by the line manager itself |
