@@ -30,6 +30,8 @@ type Resolver struct {
 	Servers []Server
 	// Workers is how many probes run at once, four when zero.
 	Workers int
+	// Progress, when set, is told after every batch: probes done, nodes known, the depth.
+	Progress func(done, nodes, depth int)
 	// Maven is the binary, mvn on PATH when empty.
 	Maven string
 	// ProbeTimeout bounds one Maven run, ten minutes when zero.
@@ -145,12 +147,17 @@ func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Ancho
 		g.Roots = append(g.Roots, c.Key())
 		queue = append(queue, c)
 	}
+	done := 0
 	for depth := 0; len(queue) > 0; depth++ {
 		batch := queue
 		queue = nil
 		results, err := r.probeAll(ctx, workDir, anchor, importBOM, batch)
 		if err != nil {
 			return nil, err
+		}
+		done += len(batch)
+		if r.Progress != nil {
+			r.Progress(done, len(nodes), depth)
 		}
 		for _, res := range results {
 			if res.err != "" {
