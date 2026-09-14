@@ -124,6 +124,27 @@ func TestInProgress(t *testing.T) {
 	}
 }
 
+// 6b. The "not remediable" label on the issue declares the CVE, wherever the issue
+// lives: counted apart, out of open and out of in progress, the reason on the issue.
+// A fixed CVE keeps fixed whatever the label says.
+func TestNotRemediableLabel(t *testing.T) {
+	in := inputs(t, &ledger.Ledger{Events: []ledger.Event{promoted("set-1", "CVE-2024-38816")}})
+	in.Issues = []Issue{
+		{CVE: "CVE-2016-1000027", Repository: "patch-spring-framework", State: "OPEN", NotRemediable: true},
+		{CVE: "CVE-2024-38816", Repository: "patch-spring-framework", State: "CLOSED", NotRemediable: true},
+	}
+	rec := Compute(in)
+	if len(rec.NotRemediable) != 1 || rec.NotRemediable[0].CVE != "CVE-2016-1000027" {
+		t.Fatalf("not remediable %+v, want CVE-2016-1000027 only", rec.NotRemediable)
+	}
+	if rec.NotRemediable[0].Reason != ReasonOnIssue || rec.NotRemediable[0].At != in.AsOf {
+		t.Fatalf("reason %q at %q", rec.NotRemediable[0].Reason, rec.NotRemediable[0].At)
+	}
+	if len(rec.InProgress) != 0 || len(rec.Open) != 119 || len(rec.Fixed) != 1 {
+		t.Fatalf("in progress %d open %d fixed %d, want 0, 119, 1", len(rec.InProgress), len(rec.Open), len(rec.Fixed))
+	}
+}
+
 // 7. Everything fixed or declared, nothing new: fixed.
 func TestRemediated(t *testing.T) {
 	b := realBook(t)

@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/d1gital-f/osera-line-manager/internal/advisories"
+	"github.com/d1gital-f/osera-line-manager/internal/board"
 	"github.com/d1gital-f/osera-line-manager/internal/book"
-	"github.com/d1gital-f/osera-line-manager/internal/issues"
 	"github.com/d1gital-f/osera-line-manager/internal/ledger"
 	"github.com/d1gital-f/osera-line-manager/internal/source"
 	"github.com/d1gital-f/osera-line-manager/internal/status"
@@ -32,7 +32,9 @@ type Config struct {
 	OutDir      string
 	GitHubToken string
 	QueryOSV    bool
-	QueryIssues bool
+	// QueryBoard reads the organisation board, BoardNumber is the project number.
+	QueryBoard  bool
+	BoardNumber int
 	// LocalDir, when set, holds cve-backlog.json and supported-lines.csv and replaces the GitHub read.
 	LocalDir string
 	// LocalVersion is the book version recorded on a local run, the directory name when empty.
@@ -91,13 +93,14 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 		}
 	}
 
-	// 3. the issues, one search
+	// 3. the issues, from the board, one paged query
 	var is []status.Issue
-	if cfg.QueryIssues {
-		is, err = issues.New(cfg.Owner, cfg.GitHubToken).Find(ctx, cfg.BacklogRepo)
+	if cfg.QueryBoard {
+		cards, err := board.New(cfg.Owner, cfg.BoardNumber, cfg.GitHubToken).Read(ctx)
 		if err != nil {
 			return nil, err
 		}
+		is = board.Issues(cards, cfg.BacklogRepo)
 	}
 
 	// 4. one record per line

@@ -83,7 +83,8 @@ func runCommand(args []string) {
 	outDir := fs.String("out", "/data/status", "where the status records are written")
 	interval := fs.Duration("interval", 10*time.Minute, "time between passes")
 	queryOSV := fs.Bool("osv", true, "ask OSV for advisories the book does not carry")
-	queryIssues := fs.Bool("issues", true, "ask GitHub where each CVE's issue lives")
+	queryBoard := fs.Bool("board", true, "read the organisation board to see where each CVE's issue lives")
+	boardNumber := fs.Int("board-number", 1, "the organisation project number of the board")
 	once := fs.Bool("once", false, "one pass, then exit")
 	local := fs.String("local", "", "a directory with cve-backlog.json and supported-lines.csv, read instead of GitHub")
 	localVersion := fs.String("book-version", "", "the book version to record on a local run, the directory name when empty")
@@ -97,7 +98,8 @@ func runCommand(args []string) {
 		OutDir:       *outDir,
 		GitHubToken:  os.Getenv("GITHUB_TOKEN"),
 		QueryOSV:     *queryOSV,
-		QueryIssues:  *queryIssues,
+		QueryBoard:   *queryBoard,
+		BoardNumber:  *boardNumber,
 		LocalDir:     *local,
 		LocalVersion: *localVersion,
 		LinesPath:    *writeLines,

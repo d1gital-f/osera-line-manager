@@ -25,12 +25,22 @@ const (
 	Fixed      = "fixed"
 )
 
-// Issue is what the line manager knows about a CVE's GitHub issue: where it
-// lives. An issue moved out of the backlog repository means a producer took it.
+// Issue is what the line manager knows about a CVE's GitHub issue, from the
+// board: where it lives, whether it is open, and whether the producer labelled it
+// not remediable. An issue moved out of the backlog repository means a producer
+// took it.
 type Issue struct {
 	CVE        string `json:"cve"`
 	Repository string `json:"repository"`
+	// State is OPEN or CLOSED as GitHub says it.
+	State string `json:"state,omitempty"`
+	// NotRemediable is true when the issue carries the "not remediable" label.
+	NotRemediable bool `json:"not_remediable,omitempty"`
 }
+
+// ReasonOnIssue is the reason recorded when a producer labelled the issue not
+// remediable: the words are in their comment on the issue, not here.
+const ReasonOnIssue = "stated on the issue"
 
 // Advisory is one CVE seen in the advisory sources for a coordinate on the line.
 // Severity is the source's own score, so a reader can tell a new Critical from a
@@ -175,13 +185,20 @@ func Compute(in Inputs) Record {
 		delete(notRemediable, cve)
 	}
 
-	// 5. in progress: an issue that left the backlog repository, for a CVE not yet fixed
+	// 5. the issues: a label says not remediable, a move out of the backlog
+	//    repository says in progress, for a CVE not yet fixed
 	inProgress := map[string]bool{}
 	for _, is := range in.Issues {
 		if !inScope[is.CVE] {
 			continue
 		}
 		if _, done := fixed[is.CVE]; done {
+			continue
+		}
+		if is.NotRemediable {
+			if _, declared := notRemediable[is.CVE]; !declared {
+				notRemediable[is.CVE] = NotRemediable{CVE: is.CVE, Reason: ReasonOnIssue, At: in.AsOf}
+			}
 			continue
 		}
 		if _, declared := notRemediable[is.CVE]; declared {
