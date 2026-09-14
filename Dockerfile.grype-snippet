@@ -1,0 +1,50 @@
+# Copyright (c) 2026 Control Plane Limited. All rights reserved.
+# Built by ControlPlane for the FINOS OSERA Exchange.
+# SPDX-License-Identifier: Apache-2.0
+
+FROM golang:1.27.1 AS build
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/line-manager ./cmd/line-manager
+
+# Grype, pinned by version and checksum from its GitHub release, verified before
+# it is unpacked. It scans the CycloneDX graph of a line; its database is
+# fetched by the line manager at start and once a day into the cache directory.
+FROM debian:bookworm-slim AS grype
+ARG TARGETARCH
+ARG GRYPE_VERSION=0.118.0
+ARG GRYPE_SHA256_AMD64=1d444c5e7360471815f7158f71935fcecc68a3c417d85c7344f770854300bba2
+ARG GRYPE_SHA256_ARM64=32aceeb8ee837244775fcb522372c8b3a47914986385f3148f4ee2c930482a84
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) SHA="$GRYPE_SHA256_AMD64" ;; \
+      arm64) SHA="$GRYPE_SHA256_ARM64" ;; \
+      *) echo "no grype for $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/grype.tgz "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_${TARGETARCH}.tar.gz"; \
+    echo "${SHA}  /tmp/grype.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/grype.tgz -C /usr/local/bin grype; \
+    /usr/local/bin/grype version
+
+# The runtime carries a JDK and Maven: the line manager resolves each line's
+# dependency graph with Maven inside the pod (no Job, no shared volume).
+# Runs as the same numeric non-root user the gate uses; HOME is set by the
+# Deployment to the emptyDir where the clone, the caches and ~/.m2 live.
+FROM maven:3.9.16-eclipse-temurin-21
+LABEL org.opencontainers.image.source="https://github.com/finos-osera/osera-platform" \
+      org.opencontainers.image.description="OSERA line manager" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+COPY --from=grype /usr/local/bin/grype /usr/local/bin/grype
+COPY --from=build /out/line-manager /line-manager
+EXPOSE 8080
+USER 65532:65532
+ENTRYPOINT ["/line-manager"]

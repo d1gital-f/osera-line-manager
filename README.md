@@ -43,7 +43,7 @@ line-manager status --book cve-backlog.json --lines supported-lines.csv --book-v
 | `--cache-dir` | `CACHE_DIR` | `/data/cache` | the scan caches, the evidence cache, the scan stamps, the intent note |
 | `--interval` | `INTERVAL` | `10m` | time between passes |
 | `--rescan-interval` | `RESCAN_INTERVAL` | `168h` | time between two scans of one line's graph |
-| `--dev-advisories` | `DEV_ADVISORIES` | | the dev only advisory file inside the repository, empty in production |
+| `--dev-advisories` | `SCANNER` (grype, the default: grype over the graph file; or sources: OSV, CISA KEV, FIRST EPSS and NVD one by one, kept for comparison), `GRYPE_BINARY`, `DEV_ADVISORIES` | | the dev only advisory file inside the repository, empty in production |
 | | `NVD_API_KEY` | | lifts NVD's public pace, environment only |
 | `--listen` | `LISTEN` | `:8080` | the health, status and webhook server |
 | `--dry` | `DRY` | `false` | compute and log, write nothing to GitHub or Nexus |

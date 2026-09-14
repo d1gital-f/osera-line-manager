@@ -284,7 +284,8 @@ func TestOnceDry(t *testing.T) {
 	now := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
 	os.WriteFile(filepath.Join(cache, "scan-"+testLine+".stamp"), []byte(now.Add(-time.Hour).Format(time.RFC3339)), 0o644)
 	cfg := Config{
-		Owner: "dev-finos-osera-forks", Repo: "backlog", CloneDir: filepath.Join(t.TempDir(), "clone"),
+		Scanner: "sources",
+		Owner:   "dev-finos-osera-forks", Repo: "backlog", CloneDir: filepath.Join(t.TempDir(), "clone"),
 		App:         AppConfig{ID: 1, InstallationID: 2, KeyFile: keyFile(t)},
 		BoardNumber: 1,
 		Nexus:       NexusConfig{URL: nx.URL, User: "line-manager", Password: "pw", ReleaseRepository: "osera-releases-maven-01"},

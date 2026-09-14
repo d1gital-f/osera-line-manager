@@ -71,6 +71,11 @@ type Config struct {
 	RescanInterval time.Duration
 	// DevAdvisories is the path, inside the repository, of the dev only advisory file. Empty in production.
 	DevAdvisories string
+	// Scanner picks how CVEs are found: "grype" (the default, grype over the graph file) or
+	// "sources" (OSV, CISA KEV, FIRST EPSS and NVD called one by one, kept for comparison).
+	Scanner string
+	// GrypeBinary is the grype executable, grype on PATH when empty.
+	GrypeBinary string
 	// Dry computes and logs, writes nothing to GitHub or Nexus.
 	Dry bool
 	// Listen is the address of the health, status and webhook server.
@@ -101,6 +106,7 @@ type Reconciler struct {
 	board    *board.Client
 	nexus    *releases.Client
 	scanner  *scan.Scanner
+	grype    *scan.GrypeScanner
 	resolver *graph.Resolver
 	now      func() time.Time
 	// wake receives one signal per accepted webhook event; the loop coalesces them.
@@ -122,6 +128,9 @@ func New(ctx context.Context, cfg Config) (*Reconciler, error) {
 
 	// 1. the scanner and the resolver, the same in every mode
 	r.scanner = scan.New(filepath.Join(cfg.CacheDir, "scan"))
+	if cfg.Scanner != "sources" {
+		r.grype = scan.NewGrype(cfg.GrypeBinary, filepath.Join(cfg.CacheDir, "grype"))
+	}
 	r.resolver = graph.NewResolver()
 	r.resolver.Workers = cfg.MavenWorkers
 	r.resolver.Progress = func(done, nodes, depth int) {

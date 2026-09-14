@@ -69,13 +69,25 @@ func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error 
 		components = append(components, scan.Component{Group: c.Group, Artifact: c.Artifact, Version: c.Version})
 	}
 
-	// 3. the sources, then the rules
-	r.scanner.DevAdvisories = ""
+	// 3. grype over the graph file, or the four sources one by one, then the rules
+	devAdvisories := ""
 	if r.cfg.DevAdvisories != "" {
-		r.scanner.DevAdvisories = r.path(filepath.FromSlash(r.cfg.DevAdvisories))
+		devAdvisories = r.path(filepath.FromSlash(r.cfg.DevAdvisories))
 	}
-	logf("line %s: scanning %d components", ln.ID, len(components))
-	findings, err := r.scanner.Scan(ctx, components)
+	var findings []scan.Finding
+	if r.grype != nil {
+		r.grype.DevAdvisories = devAdvisories
+		err = r.grype.UpdateDB(ctx)
+		if err != nil {
+			return fmt.Errorf("line %s: %w", ln.ID, err)
+		}
+		logf("line %s: scanning %d components with grype", ln.ID, len(components))
+		findings, err = r.grype.Scan(ctx, r.path(filepath.FromSlash(graphPath(ln.ID))), components)
+	} else {
+		r.scanner.DevAdvisories = devAdvisories
+		logf("line %s: scanning %d components with the sources", ln.ID, len(components))
+		findings, err = r.scanner.Scan(ctx, components)
+	}
 	if err != nil {
 		return fmt.Errorf("line %s: %w", ln.ID, err)
 	}

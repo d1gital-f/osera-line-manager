@@ -100,6 +100,8 @@ func runCommand(args []string) {
 	cacheDir := fs.String("cache-dir", env("CACHE_DIR", "/data/cache"), "the caches, the stamps and the intent note (CACHE_DIR)")
 	interval := fs.Duration("interval", envDuration("INTERVAL", 10*time.Minute), "time between passes (INTERVAL)")
 	rescan := fs.Duration("rescan-interval", envDuration("RESCAN_INTERVAL", 7*24*time.Hour), "time between two scans of one line (RESCAN_INTERVAL)")
+	scanner := fs.String("scanner", env("SCANNER", "grype"), "how CVEs are found: grype over the graph file, or sources (OSV, KEV, EPSS, NVD one by one) (SCANNER)")
+	grypeBinary := fs.String("grype-binary", env("GRYPE_BINARY", "grype"), "the grype executable (GRYPE_BINARY)")
 	devAdvisories := fs.String("dev-advisories", env("DEV_ADVISORIES", ""), "the dev only advisory file inside the repository, empty in production (DEV_ADVISORIES)")
 	listen := fs.String("listen", env("LISTEN", ":8080"), "the address of the health, status and webhook server (LISTEN)")
 	mavenWorkers := fs.Int("maven-workers", int(envInt("MAVEN_WORKERS", 4)), "how many Maven probes run at once (MAVEN_WORKERS)")
@@ -124,6 +126,8 @@ func runCommand(args []string) {
 		CacheDir:          *cacheDir,
 		Interval:          *interval,
 		RescanInterval:    *rescan,
+		Scanner:           *scanner,
+		GrypeBinary:       *grypeBinary,
 		DevAdvisories:     *devAdvisories,
 		Dry:               *dry,
 		Listen:            *listen,

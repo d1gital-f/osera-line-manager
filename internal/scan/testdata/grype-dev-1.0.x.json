@@ -1,0 +1,1236 @@
+{
+ "matches": [
+  {
+   "vulnerability": {
+    "id": "GHSA-mjmj-j48q-9wg2",
+    "dataSource": "https://github.com/advisories/GHSA-mjmj-j48q-9wg2",
+    "namespace": "github:language:java",
+    "severity": "High",
+    "urls": [
+     "https://github.com/google/security-research/security/advisories/GHSA-mjmj-j48q-9wg2",
+     "https://nvd.nist.gov/vuln/detail/CVE-2022-1471",
+     "https://bitbucket.org/snakeyaml/snakeyaml/issues/561/cve-2022-1471-vulnerability-in#comment-64581479",
+     "https://bitbucket.org/snakeyaml/snakeyaml/issues/561/cve-2022-1471-vulnerability-in#comment-64634374",
+     "https://bitbucket.org/snakeyaml/snakeyaml/wiki/CVE-2022-1471",
+     "https://github.com/mbechler/marshalsec",
+     "https://www.github.com/mbechler/marshalsec/blob/master/marshalsec.pdf?raw=true",
+     "https://bitbucket.org/snakeyaml/snakeyaml/commits/5014df1a36f50aca54405bb8433bc99a8847f758",
+     "https://bitbucket.org/snakeyaml/snakeyaml/commits/acc44099f5f4af26ff86b4e4e4cc1c874e2dc5c4",
+     "https://bitbucket.org/snakeyaml/snakeyaml/issues/561/cve-2022-1471-vulnerability-in#comment-64876314",
+     "https://groups.google.com/g/kubernetes-security-announce/c/mwrakFaEdnc",
+     "http://packetstormsecurity.com/files/175095/PyTorch-Model-Server-Registration-Deserialization-Remote-Code-Execution.html",
+     "http://www.openwall.com/lists/oss-security/2023/11/19/1",
+     "https://security.netapp.com/advisory/ntap-20230818-0015",
+     "https://security.netapp.com/advisory/ntap-20240621-0006",
+     "https://snyk.io/blog/unsafe-deserialization-snakeyaml-java-cve-2022-1471",
+     "https://confluence.atlassian.com/security/cve-2022-1471-snakeyaml-library-rce-vulnerability-in-multiple-products-1296171009.html",
+     "https://infosecwriteups.com/%EF%B8%8F-inside-the-160-comment-fight-to-fix-snakeyamls-rce-default-1a20c5ca4d4c"
+    ],
+    "description": "SnakeYaml Constructor Deserialization Remote Code Execution",
+    "cvss": [
+     {
+      "type": "Secondary",
+      "version": "3.1",
+      "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L",
+      "metrics": {
+       "baseScore": 8.3,
+       "exploitabilityScore": 2.9,
+       "impactScore": 5.5
+      },
+      "vendorMetadata": {}
+     }
+    ],
+    "epss": [
+     {
+      "cve": "CVE-2022-1471",
+      "epss": 0.99569,
+      "percentile": 0.99945,
+      "date": "2026-09-13"
+     }
+    ],
+    "cwes": [
+     {
+      "cve": "CVE-2022-1471",
+      "cwe": "CWE-20",
+      "source": "cve-coordination@google.com",
+      "type": "Secondary"
+     },
+     {
+      "cve": "CVE-2022-1471",
+      "cwe": "CWE-502",
+      "source": "nvd@nist.gov",
+      "type": "Primary"
+     }
+    ],
+    "fix": {
+     "versions": [
+      "2.0"
+     ],
+     "state": "fixed",
+     "available": [
+      {
+       "version": "2.0",
+       "date": "2023-03-05",
+       "kind": "first-observed"
+      }
+     ]
+    },
+    "advisories": [],
+    "risk": 78.65951
+   },
+   "relatedVulnerabilities": [
+    {
+     "id": "CVE-2022-1471",
+     "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2022-1471",
+     "namespace": "nvd:cpe",
+     "severity": "Critical",
+     "urls": [
+      "http://packetstormsecurity.com/files/175095/PyTorch-Model-Server-Registration-Deserialization-Remote-Code-Execution.html",
+      "http://www.openwall.com/lists/oss-security/2023/11/19/1",
+      "https://bitbucket.org/snakeyaml/snakeyaml/issues/561/cve-2022-1471-vulnerability-in#comment-64581479",
+      "https://confluence.atlassian.com/security/cve-2022-1471-snakeyaml-library-rce-vulnerability-in-multiple-products-1296171009.html",
+      "https://github.com/google/security-research/security/advisories/GHSA-mjmj-j48q-9wg2",
+      "https://github.com/mbechler/marshalsec",
+      "https://groups.google.com/g/kubernetes-security-announce/c/mwrakFaEdnc",
+      "https://infosecwriteups.com/%EF%B8%8F-inside-the-160-comment-fight-to-fix-snakeyamls-rce-default-1a20c5ca4d4c",
+      "https://security.netapp.com/advisory/ntap-20230818-0015/",
+      "https://security.netapp.com/advisory/ntap-20240621-0006/",
+      "https://www.github.com/mbechler/marshalsec/blob/master/marshalsec.pdf?raw=true"
+     ],
+     "description": "SnakeYaml's Constructor() class does not restrict types which can be instantiated during deserialization.\u00a0Deserializing yaml content provided by an attacker can lead to remote code execution. We recommend using SnakeYaml's SafeConsturctor when parsing untrusted content to restrict deserialization. We recommend upgrading to version 2.0 and beyond.",
+     "cvss": [
+      {
+       "source": "nvd@nist.gov",
+       "type": "Primary",
+       "version": "3.1",
+       "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+       "metrics": {
+        "baseScore": 9.8,
+        "exploitabilityScore": 3.9,
+        "impactScore": 5.9
+       },
+       "vendorMetadata": {}
+      },
+      {
+       "source": "cve-coordination@google.com",
+       "type": "Secondary",
+       "version": "3.1",
+       "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L",
+       "metrics": {
+        "baseScore": 8.3,
+        "exploitabilityScore": 2.9,
+        "impactScore": 5.5
+       },
+       "vendorMetadata": {}
+      }
+     ],
+     "epss": [
+      {
+       "cve": "CVE-2022-1471",
+       "epss": 0.99569,
+       "percentile": 0.99945,
+       "date": "2026-09-13"
+      }
+     ],
+     "cwes": [
+      {
+       "cve": "CVE-2022-1471",
+       "cwe": "CWE-20",
+       "source": "cve-coordination@google.com",
+       "type": "Secondary"
+      },
+      {
+       "cve": "CVE-2022-1471",
+       "cwe": "CWE-502",
+       "source": "nvd@nist.gov",
+       "type": "Primary"
+      }
+     ]
+    }
+   ],
+   "matchDetails": [
+    {
+     "type": "exact-direct-match",
+     "matcher": "java-matcher",
+     "searchedBy": {
+      "language": "java",
+      "namespace": "github:language:java",
+      "package": {
+       "name": "org.yaml:snakeyaml",
+       "version": "1.33"
+      }
+     },
+     "found": {
+      "vulnerabilityID": "GHSA-mjmj-j48q-9wg2",
+      "versionConstraint": "<=1.33 (unknown)"
+     },
+     "fix": {
+      "suggestedVersion": "2.0"
+     }
+    }
+   ],
+   "artifact": {
+    "id": "pkg:maven/org.yaml/snakeyaml@1.33",
+    "name": "snakeyaml",
+    "version": "1.33",
+    "type": "java-archive",
+    "locations": null,
+    "language": "java",
+    "licenses": [],
+    "cpes": [],
+    "purl": "pkg:maven/org.yaml/snakeyaml@1.33",
+    "upstreams": [],
+    "metadataType": "JavaMetadata",
+    "metadata": {
+     "virtualPath": "",
+     "pomArtifactID": "snakeyaml",
+     "pomGroupID": "org.yaml",
+     "manifestName": "",
+     "archiveDigests": null
+    }
+   }
+  },
+  {
+   "vulnerability": {
+    "id": "GHSA-4jrv-ppp4-jm57",
+    "dataSource": "https://github.com/advisories/GHSA-4jrv-ppp4-jm57",
+    "namespace": "github:language:java",
+    "severity": "High",
+    "urls": [
+     "https://nvd.nist.gov/vuln/detail/CVE-2022-25647",
+     "https://github.com/google/gson/pull/1991",
+     "https://github.com/google/gson/pull/1991/commits",
+     "https://snyk.io/vuln/SNYK-JAVA-COMGOOGLECODEGSON-1730327",
+     "https://lists.debian.org/debian-lts-announce/2022/05/msg00015.html",
+     "https://www.oracle.com/security-alerts/cpujul2022.html",
+     "https://lists.debian.org/debian-lts-announce/2022/09/msg00009.html",
+     "https://www.debian.org/security/2022/dsa-5227",
+     "https://security.netapp.com/advisory/ntap-20220901-0009"
+    ],
+    "description": "Deserialization of Untrusted Data in Gson",
+    "cvss": [
+     {
+      "type": "Secondary",
+      "version": "3.1",
+      "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:H/A:H",
+      "metrics": {
+       "baseScore": 7.7,
+       "exploitabilityScore": 2.3,
+       "impactScore": 5.5
+      },
+      "vendorMetadata": {}
+     }
+    ],
+    "epss": [
+     {
+      "cve": "CVE-2022-25647",
+      "epss": 0.1223,
+      "percentile": 0.95937,
+      "date": "2026-09-13"
+     }
+    ],
+    "cwes": [
+     {
+      "cve": "CVE-2022-25647",
+      "cwe": "CWE-502",
+      "source": "nvd@nist.gov",
+      "type": "Primary"
+     },
+     {
+      "cve": "CVE-2022-25647",
+      "cwe": "CWE-502",
+      "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+      "type": "Secondary"
+     }
+    ],
+    "fix": {
+     "versions": [
+      "2.8.9"
+     ],
+     "state": "fixed",
+     "available": [
+      {
+       "version": "2.8.9",
+       "date": "2022-05-21",
+       "kind": "first-observed"
+      }
+     ]
+    },
+    "advisories": [],
+    "risk": 9.2948
+   },
+   "relatedVulnerabilities": [
+    {
+     "id": "CVE-2022-25647",
+     "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2022-25647",
+     "namespace": "nvd:cpe",
+     "severity": "High",
+     "urls": [
+      "https://github.com/google/gson/pull/1991",
+      "https://github.com/google/gson/pull/1991/commits",
+      "https://lists.debian.org/debian-lts-announce/2022/05/msg00015.html",
+      "https://lists.debian.org/debian-lts-announce/2022/09/msg00009.html",
+      "https://security.netapp.com/advisory/ntap-20220901-0009/",
+      "https://snyk.io/vuln/SNYK-JAVA-COMGOOGLECODEGSON-1730327",
+      "https://www.debian.org/security/2022/dsa-5227",
+      "https://www.oracle.com/security-alerts/cpujul2022.html"
+     ],
+     "description": "The package com.google.code.gson:gson before 2.8.9 are vulnerable to Deserialization of Untrusted Data via the writeReplace() method in internal classes, which may lead to DoS attacks.",
+     "cvss": [
+      {
+       "source": "nvd@nist.gov",
+       "type": "Primary",
+       "version": "3.1",
+       "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+       "metrics": {
+        "baseScore": 7.5,
+        "exploitabilityScore": 3.9,
+        "impactScore": 3.6
+       },
+       "vendorMetadata": {}
+      },
+      {
+       "source": "nvd@nist.gov",
+       "type": "Primary",
+       "version": "2.0",
+       "vector": "AV:N/AC:L/Au:N/C:N/I:N/A:P",
+       "metrics": {
+        "baseScore": 5,
+        "exploitabilityScore": 10,
+        "impactScore": 2.9
+       },
+       "vendorMetadata": {}
+      },
+      {
+       "source": "report@snyk.io",
+       "type": "Secondary",
+       "version": "3.1",
+       "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:H/A:H",
+       "metrics": {
+        "baseScore": 7.7,
+        "exploitabilityScore": 2.3,
+        "impactScore": 5.5
+       },
+       "vendorMetadata": {}
+      }
+     ],
+     "epss": [
+      {
+       "cve": "CVE-2022-25647",
+       "epss": 0.1223,
+       "percentile": 0.95937,
+       "date": "2026-09-13"
+      }
+     ],
+     "cwes": [
+      {
+       "cve": "CVE-2022-25647",
+       "cwe": "CWE-502",
+       "source": "nvd@nist.gov",
+       "type": "Primary"
+      },
+      {
+       "cve": "CVE-2022-25647",
+       "cwe": "CWE-502",
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "type": "Secondary"
+      }
+     ]
+    }
+   ],
+   "matchDetails": [
+    {
+     "type": "exact-direct-match",
+     "matcher": "java-matcher",
+     "searchedBy": {
+      "language": "java",
+      "namespace": "github:language:java",
+      "package": {
+       "name": "com.google.code.gson:gson",
+       "version": "2.8.8"
+      }
+     },
+     "found": {
+      "vulnerabilityID": "GHSA-4jrv-ppp4-jm57",
+      "versionConstraint": "<2.8.9 (unknown)"
+     },
+     "fix": {
+      "suggestedVersion": "2.8.9"
+     }
+    }
+   ],
+   "artifact": {
+    "id": "pkg:maven/com.google.code.gson/gson@2.8.8",
+    "name": "gson",
+    "version": "2.8.8",
+    "type": "java-archive",
+    "locations": null,
+    "language": "java",
+    "licenses": [],
+    "cpes": [],
+    "purl": "pkg:maven/com.google.code.gson/gson@2.8.8",
+    "upstreams": [],
+    "metadataType": "JavaMetadata",
+    "metadata": {
+     "virtualPath": "",
+     "pomArtifactID": "gson",
+     "pomGroupID": "com.google.code.gson",
+     "manifestName": "",
+     "archiveDigests": null
+    }
+   }
+  },
+  {
+   "vulnerability": {
+    "id": "GHSA-j288-q9x7-2f5v",
+    "dataSource": "https://github.com/advisories/GHSA-j288-q9x7-2f5v",
+    "namespace": "github:language:java",
+    "severity": "Medium",
+    "urls": [
+     "https://nvd.nist.gov/vuln/detail/CVE-2025-48924",
+     "https://lists.apache.org/thread/bgv0lpswokgol11tloxnjfzdl7yrc1g1",
+     "https://github.com/apache/commons-lang/commit/b424803abdb2bec818e4fbcb251ce031c22aca53",
+     "https://lists.debian.org/debian-lts-announce/2025/08/msg00000.html",
+     "https://lists.debian.org/debian-lts-announce/2025/08/msg00026.html",
+     "https://lists.debian.org/debian-lts-announce/2025/09/msg00032.html",
+     "https://lists.debian.org/debian-lts-announce/2025/09/msg00036.html",
+     "http://www.openwall.com/lists/oss-security/2025/07/11/1"
+    ],
+    "description": "Apache Commons Lang is vulnerable to Uncontrolled Recursion when processing long inputs",
+    "cvss": [
+     {
+      "type": "Secondary",
+      "version": "3.1",
+      "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
+      "metrics": {
+       "baseScore": 6.5,
+       "exploitabilityScore": 3.9,
+       "impactScore": 2.6
+      },
+      "vendorMetadata": {}
+     }
+    ],
+    "epss": [
+     {
+      "cve": "CVE-2025-48924",
+      "epss": 0.0227,
+      "percentile": 0.82077,
+      "date": "2026-09-13"
+     }
+    ],
+    "cwes": [
+     {
+      "cve": "CVE-2025-48924",
+      "cwe": "CWE-674",
+      "source": "security@apache.org",
+      "type": "Secondary"
+     }
+    ],
+    "fix": {
+     "versions": [
+      "3.18.0"
+     ],
+     "state": "fixed",
+     "available": [
+      {
+       "version": "3.18.0",
+       "date": "2025-07-12",
+       "kind": "first-observed"
+      }
+     ]
+    },
+    "advisories": [],
+    "risk": 1.30525
+   },
+   "relatedVulnerabilities": [
+    {
+     "id": "CVE-2025-48924",
+     "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2025-48924",
+     "namespace": "nvd:cpe",
+     "severity": "Medium",
+     "urls": [
+      "https://lists.apache.org/thread/bgv0lpswokgol11tloxnjfzdl7yrc1g1",
+      "http://www.openwall.com/lists/oss-security/2025/07/11/1",
+      "https://lists.debian.org/debian-lts-announce/2025/08/msg00000.html",
+      "https://lists.debian.org/debian-lts-announce/2025/08/msg00026.html",
+      "https://lists.debian.org/debian-lts-announce/2025/09/msg00032.html",
+      "https://lists.debian.org/debian-lts-announce/2025/09/msg00036.html"
+     ],
+     "description": "Uncontrolled Recursion vulnerability in Apache Commons Lang.\n\nThis issue affects Apache Commons Lang: Starting with\u00a0commons-lang:commons-lang\u00a02.0 to 2.6, and, from org.apache.commons:commons-lang3 3.0 before\u00a03.18.0.\n\nThe methods ClassUtils.getClass(...) can throw\u00a0StackOverflowError on very long inputs. Because an Error is usually not handled by applications and libraries, a \nStackOverflowError could\u00a0cause an application to stop.\n\nUsers are recommended to upgrade to version 3.18.0, which fixes the issue.",
+     "cvss": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "type": "Secondary",
+       "version": "3.1",
+       "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+       "metrics": {
+        "baseScore": 5.3,
+        "exploitabilityScore": 3.9,
+        "impactScore": 1.5
+       },
+       "vendorMetadata": {}
+      }
+     ],
+     "epss": [
+      {
+       "cve": "CVE-2025-48924",
+       "epss": 0.0227,
+       "percentile": 0.82077,
+       "date": "2026-09-13"
+      }
+     ],
+     "cwes": [
+      {
+       "cve": "CVE-2025-48924",
+       "cwe": "CWE-674",
+       "source": "security@apache.org",
+       "type": "Secondary"
+      }
+     ]
+    }
+   ],
+   "matchDetails": [
+    {
+     "type": "exact-direct-match",
+     "matcher": "java-matcher",
+     "searchedBy": {
+      "language": "java",
+      "namespace": "github:language:java",
+      "package": {
+       "name": "org.apache.commons:commons-lang3",
+       "version": "3.12.0"
+      }
+     },
+     "found": {
+      "vulnerabilityID": "GHSA-j288-q9x7-2f5v",
+      "versionConstraint": ">=3.0,<3.18.0 (unknown)"
+     },
+     "fix": {
+      "suggestedVersion": "3.18.0"
+     }
+    }
+   ],
+   "artifact": {
+    "id": "pkg:maven/org.apache.commons/commons-lang3@3.12.0",
+    "name": "commons-lang3",
+    "version": "3.12.0",
+    "type": "java-archive",
+    "locations": null,
+    "language": "java",
+    "licenses": [],
+    "cpes": [],
+    "purl": "pkg:maven/org.apache.commons/commons-lang3@3.12.0",
+    "upstreams": [],
+    "metadataType": "JavaMetadata",
+    "metadata": {
+     "virtualPath": "",
+     "pomArtifactID": "commons-lang3",
+     "pomGroupID": "org.apache.commons",
+     "manifestName": "",
+     "archiveDigests": null
+    }
+   }
+  },
+  {
+   "vulnerability": {
+    "id": "GHSA-78wr-2p64-hpwj",
+    "dataSource": "https://github.com/advisories/GHSA-78wr-2p64-hpwj",
+    "namespace": "github:language:java",
+    "severity": "High",
+    "urls": [
+     "https://nvd.nist.gov/vuln/detail/CVE-2024-47554",
+     "https://lists.apache.org/thread/6ozr91rr9cj5lm0zyhv30bsp317hk5z1",
+     "http://www.openwall.com/lists/oss-security/2024/10/03/2",
+     "https://security.netapp.com/advisory/ntap-20250131-0010"
+    ],
+    "description": "Apache Commons IO: Possible denial of service attack on untrusted input to XmlStreamReader",
+    "cvss": [
+     {
+      "type": "Secondary",
+      "version": "3.1",
+      "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "metrics": {
+       "baseScore": 7.5,
+       "exploitabilityScore": 3.9,
+       "impactScore": 3.6
+      },
+      "vendorMetadata": {}
+     },
+     {
+      "type": "Secondary",
+      "version": "4.0",
+      "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+      "metrics": {
+       "baseScore": 8.7
+      },
+      "vendorMetadata": {}
+     }
+    ],
+    "epss": [
+     {
+      "cve": "CVE-2024-47554",
+      "epss": 0.01315,
+      "percentile": 0.69134,
+      "date": "2026-09-13"
+     }
+    ],
+    "cwes": [
+     {
+      "cve": "CVE-2024-47554",
+      "cwe": "CWE-400",
+      "source": "security@apache.org",
+      "type": "Secondary"
+     }
+    ],
+    "fix": {
+     "versions": [
+      "2.14.0"
+     ],
+     "state": "fixed",
+     "available": [
+      {
+       "version": "2.14.0",
+       "date": "2024-10-04",
+       "kind": "first-observed"
+      }
+     ]
+    },
+    "advisories": [],
+    "risk": 1.0257
+   },
+   "relatedVulnerabilities": [
+    {
+     "id": "CVE-2024-47554",
+     "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2024-47554",
+     "namespace": "nvd:cpe",
+     "severity": "Medium",
+     "urls": [
+      "https://lists.apache.org/thread/6ozr91rr9cj5lm0zyhv30bsp317hk5z1",
+      "http://www.openwall.com/lists/oss-security/2024/10/03/2",
+      "https://security.netapp.com/advisory/ntap-20250131-0010/"
+     ],
+     "description": "Uncontrolled Resource Consumption vulnerability in Apache Commons IO.\n\nThe org.apache.commons.io.input.XmlStreamReader class may excessively consume CPU resources when processing maliciously crafted input.\n\n\nThis issue affects Apache Commons IO: from 2.0 before 2.14.0.\n\nUsers are recommended to upgrade to version 2.14.0 or later, which fixes the issue.",
+     "cvss": [
+      {
+       "source": "134c704f-9b21-4f2e-91b3-4a467353bcc0",
+       "type": "Secondary",
+       "version": "3.1",
+       "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:L",
+       "metrics": {
+        "baseScore": 4.3,
+        "exploitabilityScore": 2.9,
+        "impactScore": 1.5
+       },
+       "vendorMetadata": {}
+      }
+     ],
+     "epss": [
+      {
+       "cve": "CVE-2024-47554",
+       "epss": 0.01315,
+       "percentile": 0.69134,
+       "date": "2026-09-13"
+      }
+     ],
+     "cwes": [
+      {
+       "cve": "CVE-2024-47554",
+       "cwe": "CWE-400",
+       "source": "security@apache.org",
+       "type": "Secondary"
+      }
+     ]
+    }
+   ],
+   "matchDetails": [
+    {
+     "type": "exact-direct-match",
+     "matcher": "java-matcher",
+     "searchedBy": {
+      "language": "java",
+      "namespace": "github:language:java",
+      "package": {
+       "name": "commons-io:commons-io",
+       "version": "2.11.0"
+      }
+     },
+     "found": {
+      "vulnerabilityID": "GHSA-78wr-2p64-hpwj",
+      "versionConstraint": ">=2.0,<2.14.0 (unknown)"
+     },
+     "fix": {
+      "suggestedVersion": "2.14.0"
+     }
+    }
+   ],
+   "artifact": {
+    "id": "pkg:maven/commons-io/commons-io@2.11.0",
+    "name": "commons-io",
+    "version": "2.11.0",
+    "type": "java-archive",
+    "locations": null,
+    "language": "java",
+    "licenses": [],
+    "cpes": [],
+    "purl": "pkg:maven/commons-io/commons-io@2.11.0",
+    "upstreams": [],
+    "metadataType": "JavaMetadata",
+    "metadata": {
+     "virtualPath": "",
+     "pomArtifactID": "commons-io",
+     "pomGroupID": "commons-io",
+     "manifestName": "",
+     "archiveDigests": null
+    }
+   }
+  },
+  {
+   "vulnerability": {
+    "id": "GHSA-h46c-h94j-95f3",
+    "dataSource": "https://github.com/advisories/GHSA-h46c-h94j-95f3",
+    "namespace": "github:language:java",
+    "severity": "High",
+    "urls": [
+     "https://github.com/FasterXML/jackson-core/security/advisories/GHSA-h46c-h94j-95f3",
+     "https://nvd.nist.gov/vuln/detail/CVE-2025-52999",
+     "https://github.com/FasterXML/jackson-core/pull/943"
+    ],
+    "description": "jackson-core can throw a StackoverflowError when processing deeply nested data",
+    "cvss": [
+     {
+      "type": "Secondary",
+      "version": "4.0",
+      "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+      "metrics": {
+       "baseScore": 8.7
+      },
+      "vendorMetadata": {}
+     }
+    ],
+    "epss": [
+     {
+      "cve": "CVE-2025-52999",
+      "epss": 0.00665,
+      "percentile": 0.49806,
+      "date": "2026-09-13"
+     }
+    ],
+    "cwes": [
+     {
+      "cve": "CVE-2025-52999",
+      "cwe": "CWE-121",
+      "source": "security-advisories@github.com",
+      "type": "Secondary"
+     }
+    ],
+    "fix": {
+     "versions": [
+      "2.15.0"
+     ],
+     "state": "fixed",
+     "available": [
+      {
+       "version": "2.15.0",
+       "date": "2025-06-28",
+       "kind": "first-observed"
+      }
+     ]
+    },
+    "advisories": [],
+    "risk": 0.5386499999999999
+   },
+   "relatedVulnerabilities": [
+    {
+     "id": "CVE-2025-52999",
+     "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2025-52999",
+     "namespace": "nvd:cpe",
+     "severity": "High",
+     "urls": [
+      "https://github.com/FasterXML/jackson-core/pull/943",
+      "https://github.com/FasterXML/jackson-core/security/advisories/GHSA-h46c-h94j-95f3"
+     ],
+     "description": "jackson-core contains core low-level incremental (\"streaming\") parser and generator abstractions used by Jackson Data Processor. In versions prior to 2.15.0, if a user parses an input file and it has deeply nested data, Jackson could end up throwing a StackoverflowError if the depth is particularly large. jackson-core 2.15.0 contains a configurable limit for how deep Jackson will traverse in an input document, defaulting to an allowable depth of 1000. jackson-core will throw a StreamConstraintsException if the limit is reached. jackson-databind also benefits from this change because it uses jackson-core to parse JSON inputs. As a workaround, users should avoid parsing input files from untrusted sources.",
+     "cvss": [
+      {
+       "source": "security-advisories@github.com",
+       "type": "Secondary",
+       "version": "4.0",
+       "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N/E:X/CR:X/IR:X/AR:X/MAV:X/MAC:X/MAT:X/MPR:X/MUI:X/MVC:X/MVI:X/MVA:X/MSC:X/MSI:X/MSA:X/S:X/AU:X/R:X/V:X/RE:X/U:X",
+       "metrics": {
+        "baseScore": 8.7
+       },
+       "vendorMetadata": {}
+      }
+     ],
+     "epss": [
+      {
+       "cve": "CVE-2025-52999",
+       "epss": 0.00665,
+       "percentile": 0.49806,
+       "date": "2026-09-13"
+      }
+     ],
+     "cwes": [
+      {
+       "cve": "CVE-2025-52999",
+       "cwe": "CWE-121",
+       "source": "security-advisories@github.com",
+       "type": "Secondary"
+      }
+     ]
+    }
+   ],
+   "matchDetails": [
+    {
+     "type": "exact-direct-match",
+     "matcher": "java-matcher",
+     "searchedBy": {
+      "language": "java",
+      "namespace": "github:language:java",
+      "package": {
+       "name": "com.fasterxml.jackson.core:jackson-core",
+       "version": "2.14.2"
+      }
+     },
+     "found": {
+      "vulnerabilityID": "GHSA-h46c-h94j-95f3",
+      "versionConstraint": "<2.15.0 (unknown)"
+     },
+     "fix": {
+      "suggestedVersion": "2.15.0"
+     }
+    }
+   ],
+   "artifact": {
+    "id": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.14.2",
+    "name": "jackson-core",
+    "version": "2.14.2",
+    "type": "java-archive",
+    "locations": null,
+    "language": "java",
+    "licenses": [],
+    "cpes": [],
+    "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.14.2",
+    "upstreams": [],
+    "metadataType": "JavaMetadata",
+    "metadata": {
+     "virtualPath": "",
+     "pomArtifactID": "jackson-core",
+     "pomGroupID": "com.fasterxml.jackson.core",
+     "manifestName": "",
+     "archiveDigests": null
+    }
+   }
+  },
+  {
+   "vulnerability": {
+    "id": "GHSA-r7wm-3cxj-wff9",
+    "dataSource": "https://github.com/advisories/GHSA-r7wm-3cxj-wff9",
+    "namespace": "github:language:java",
+    "severity": "High",
+    "urls": [
+     "https://github.com/FasterXML/jackson-core/security/advisories/GHSA-r7wm-3cxj-wff9",
+     "https://github.com/FasterXML/jackson-core/pull/1611",
+     "https://github.com/FasterXML/jackson-core/commit/050b429804dce2a7e08f0be1b0b4c3d040fdb9cd",
+     "https://github.com/FasterXML/jackson-core/commit/4cdd529749da396cc7edf6d4a2aad41d47902641",
+     "https://github.com/FasterXML/jackson-core/commit/c5941e5aae7fd5aeac55d66933cfb82b9aabeef8"
+    ],
+    "description": "jackson-core: Async parser maxNumberLength bypass via chunked digit accumulation (incomplete fix for GHSA-72hv-8253-57qq)",
+    "cvss": [
+     {
+      "type": "Secondary",
+      "version": "4.0",
+      "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+      "metrics": {
+       "baseScore": 8.7
+      },
+      "vendorMetadata": {}
+     }
+    ],
+    "fix": {
+     "versions": [
+      "2.18.8"
+     ],
+     "state": "fixed",
+     "available": [
+      {
+       "version": "2.18.8",
+       "date": "2026-07-22",
+       "kind": "first-observed"
+      }
+     ]
+    },
+    "advisories": [],
+    "risk": 0
+   },
+   "relatedVulnerabilities": [],
+   "matchDetails": [
+    {
+     "type": "exact-direct-match",
+     "matcher": "java-matcher",
+     "searchedBy": {
+      "language": "java",
+      "namespace": "github:language:java",
+      "package": {
+       "name": "com.fasterxml.jackson.core:jackson-core",
+       "version": "2.14.2"
+      }
+     },
+     "found": {
+      "vulnerabilityID": "GHSA-r7wm-3cxj-wff9",
+      "versionConstraint": "<2.18.8 (unknown)"
+     },
+     "fix": {
+      "suggestedVersion": "2.18.8"
+     }
+    }
+   ],
+   "artifact": {
+    "id": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.14.2",
+    "name": "jackson-core",
+    "version": "2.14.2",
+    "type": "java-archive",
+    "locations": null,
+    "language": "java",
+    "licenses": [],
+    "cpes": [],
+    "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.14.2",
+    "upstreams": [],
+    "metadataType": "JavaMetadata",
+    "metadata": {
+     "virtualPath": "",
+     "pomArtifactID": "jackson-core",
+     "pomGroupID": "com.fasterxml.jackson.core",
+     "manifestName": "",
+     "archiveDigests": null
+    }
+   }
+  }
+ ],
+ "source": {
+  "type": "sbom-file",
+  "target": "/var/folders/vm/4q98rf6d7dz00zdb0gkb2ps00000gn/T//grype-fork/maven.cdx.json"
+ },
+ "distro": {
+  "name": "",
+  "version": "",
+  "idLike": null
+ },
+ "descriptor": {
+  "name": "grype",
+  "version": "0.118.0",
+  "configuration": {
+   "output": [
+    "json"
+   ],
+   "file": "",
+   "pretty": false,
+   "distro": "",
+   "add-cpes-if-none": false,
+   "output-template-file": "",
+   "check-for-app-update": true,
+   "only-fixed": false,
+   "only-notfixed": false,
+   "ignore-wontfix": "",
+   "platform": "",
+   "search": {
+    "scope": "squashed",
+    "unindexed-archives": false,
+    "indexed-archives": true
+   },
+   "ignore": [
+    {
+     "vulnerability": "",
+     "include-aliases": false,
+     "reason": "",
+     "namespace": "",
+     "fix-state": "",
+     "package": {
+      "name": "kernel-headers",
+      "version": "",
+      "language": "",
+      "type": "rpm",
+      "location": "",
+      "upstream-name": "kernel"
+     },
+     "vex-status": "",
+     "vex-justification": "",
+     "match-type": "exact-indirect-match"
+    },
+    {
+     "vulnerability": "",
+     "include-aliases": false,
+     "reason": "",
+     "namespace": "",
+     "fix-state": "",
+     "package": {
+      "name": "linux(-.*)?-headers-.*",
+      "version": "",
+      "language": "",
+      "type": "deb",
+      "location": "",
+      "upstream-name": "linux.*"
+     },
+     "vex-status": "",
+     "vex-justification": "",
+     "match-type": "exact-indirect-match"
+    },
+    {
+     "vulnerability": "",
+     "include-aliases": false,
+     "reason": "",
+     "namespace": "",
+     "fix-state": "",
+     "package": {
+      "name": "linux-libc-dev",
+      "version": "",
+      "language": "",
+      "type": "deb",
+      "location": "",
+      "upstream-name": "linux"
+     },
+     "vex-status": "",
+     "vex-justification": "",
+     "match-type": "exact-indirect-match"
+    },
+    {
+     "vulnerability": "",
+     "include-aliases": false,
+     "reason": "",
+     "namespace": "",
+     "fix-state": "",
+     "package": {
+      "name": "linux-kbuild-.*",
+      "version": "",
+      "language": "",
+      "type": "deb",
+      "location": "",
+      "upstream-name": "linux.*"
+     },
+     "vex-status": "",
+     "vex-justification": "",
+     "match-type": "exact-indirect-match"
+    }
+   ],
+   "exclude": [],
+   "externalSources": {
+    "enable": false,
+    "maven": {
+     "searchUpstreamBySha1": true,
+     "baseUrl": "https://search.maven.org/solrsearch/select",
+     "rateLimit": 300000000
+    }
+   },
+   "match": {
+    "java": {
+     "using-cpes": false
+    },
+    "jvm": {
+     "using-cpes": true
+    },
+    "dotnet": {
+     "using-cpes": false
+    },
+    "golang": {
+     "using-cpes": false,
+     "always-use-cpe-for-stdlib": false,
+     "allow-main-module-pseudo-version-comparison": false
+    },
+    "javascript": {
+     "using-cpes": false
+    },
+    "python": {
+     "using-cpes": false
+    },
+    "ruby": {
+     "using-cpes": false
+    },
+    "rust": {
+     "using-cpes": false
+    },
+    "hex": {
+     "using-cpes": false
+    },
+    "stock": {
+     "using-cpes": true
+    },
+    "dpkg": {
+     "using-cpes": false,
+     "missing-epoch-strategy": "zero",
+     "use-cpes-for-eol": false
+    },
+    "rpm": {
+     "using-cpes": false,
+     "missing-epoch-strategy": "auto",
+     "use-cpes-for-eol": false
+    }
+   },
+   "fail-on-severity": "",
+   "registry": {
+    "insecure-skip-tls-verify": false,
+    "insecure-use-http": false,
+    "ca-cert": ""
+   },
+   "show-suppressed": false,
+   "by-cve": false,
+   "SortBy": {
+    "sort-by": "risk"
+   },
+   "name": "",
+   "default-image-pull-source": "",
+   "from": null,
+   "vex-documents": [],
+   "vex-add": [],
+   "match-upstream-kernel-headers": false,
+   "fix-channel": {
+    "redhat-eus": {
+     "apply": "auto",
+     "versions": ">= 8.0"
+    },
+    "ubuntu-esm": {
+     "apply": "auto",
+     "versions": ""
+    }
+   },
+   "timestamp": true,
+   "alerts": {
+    "enable-eol-distro-warnings": true
+   },
+   "db": {
+    "cache-dir": "/var/folders/vm/4q98rf6d7dz00zdb0gkb2ps00000gn/T//grype-fork/db",
+    "update-url": "https://grype.anchore.io/databases",
+    "ca-cert": "",
+    "auto-update": false,
+    "validate-by-hash-on-start": true,
+    "validate-age": true,
+    "max-allowed-built-age": 432000000000000,
+    "require-update-check": false,
+    "update-available-timeout": 30000000000,
+    "update-download-timeout": 300000000000,
+    "max-update-check-frequency": 7200000000000
+   },
+   "exp": {},
+   "dev": {
+    "db": {
+     "debug": false
+    }
+   }
+  },
+  "db": {
+   "status": {
+    "schemaVersion": "v6.1.9",
+    "from": "https://grype.anchore.io/databases/v6/vulnerability-db_v6.1.9_2026-09-14T00:34:27Z_1789367918.tar.zst?checksum=sha256%3Afcdaacfab790b3c45dc911918bab5ec5358171470cfc87b28ef0619e59f141a8",
+    "built": "2026-09-14T06:38:38Z",
+    "path": "/var/folders/vm/4q98rf6d7dz00zdb0gkb2ps00000gn/T/grype-fork/db/6/vulnerability.db",
+    "valid": true
+   },
+   "providers": {
+    "alma": {
+     "captured": "2026-09-14T00:34:35Z",
+     "input": "xxh64:6b6f2f0499f84921"
+    },
+    "alpine": {
+     "captured": "2026-09-14T00:34:39Z",
+     "input": "xxh64:6b86ef35ad80180c"
+    },
+    "amazon": {
+     "captured": "2026-09-14T00:34:28Z",
+     "input": "xxh64:1f1b66a3b14da5a8"
+    },
+    "arch": {
+     "captured": "2026-09-14T00:34:29Z",
+     "input": "xxh64:d579a905ef3e9777"
+    },
+    "bitnami": {
+     "captured": "2026-09-14T00:34:31Z",
+     "input": "xxh64:ce60d78c9b5c6c8a"
+    },
+    "chainguard": {
+     "captured": "2026-09-14T00:34:57Z",
+     "input": "xxh64:16c5a59d464dbdec"
+    },
+    "chainguard-libraries": {
+     "captured": "2026-09-14T00:34:39Z",
+     "input": "xxh64:972244f68f7a44ff"
+    },
+    "debian": {
+     "captured": "2026-09-14T00:37:13Z",
+     "input": "xxh64:62cad95b5f9bdbda"
+    },
+    "echo": {
+     "captured": "2026-09-14T00:34:27Z",
+     "input": "xxh64:1a5c5a0cd4acd54f"
+    },
+    "eol": {
+     "captured": "2026-09-14T00:34:28Z",
+     "input": "xxh64:0037703f4e60f7b4"
+    },
+    "epss": {
+     "captured": "2026-09-14T00:34:32Z",
+     "input": "xxh64:05a3c3cab8d24204"
+    },
+    "fedora": {
+     "captured": "2026-09-14T00:35:18Z",
+     "input": "xxh64:5b2738af9fd7354e"
+    },
+    "github": {
+     "captured": "2026-09-14T00:34:45Z",
+     "input": "xxh64:294a341397d55646"
+    },
+    "govulndb": {
+     "captured": "2026-09-14T00:34:37Z",
+     "input": "xxh64:c87a92df4f32f511"
+    },
+    "hummingbird": {
+     "captured": "2026-09-14T00:36:56Z",
+     "input": "xxh64:5967cfb6d2fb8fc6"
+    },
+    "kev": {
+     "captured": "2026-09-14T00:34:31Z",
+     "input": "xxh64:c93e631f90352adb"
+    },
+    "mariner": {
+     "captured": "2026-09-14T00:34:34Z",
+     "input": "xxh64:e2bb51ffc67094aa"
+    },
+    "minimos": {
+     "captured": "2026-09-14T00:34:36Z",
+     "input": "xxh64:bf37e4f437f28f8a"
+    },
+    "nvd": {
+     "captured": "2026-09-14T00:35:57Z",
+     "input": "xxh64:8eaf2be457c45ce1"
+    },
+    "oracle": {
+     "captured": "2026-09-14T00:34:32Z",
+     "input": "xxh64:cc0cda2ecba913a4"
+    },
+    "photon": {
+     "captured": "2026-09-14T00:34:35Z",
+     "input": "xxh64:d3ec76abe5bd07aa"
+    },
+    "rhel": {
+     "captured": "2026-09-14T00:35:59Z",
+     "input": "xxh64:480141b576de601a"
+    },
+    "secureos": {
+     "captured": "2026-09-14T00:34:58Z",
+     "input": "xxh64:bed1e16ae799e296"
+    },
+    "sles": {
+     "captured": "2026-09-14T00:35:34Z",
+     "input": "xxh64:509491ff166cfa16"
+    },
+    "ubuntu": {
+     "captured": "2026-09-14T00:37:29Z",
+     "input": "xxh64:60b835aa777258a6"
+    },
+    "wolfi": {
+     "captured": "2026-09-14T00:34:38Z",
+     "input": "xxh64:c9d46d6f6247e0bd"
+    }
+   }
+  },
+  "timestamp": "2026-09-14T16:39:09.956446+01:00"
+ }
+}
