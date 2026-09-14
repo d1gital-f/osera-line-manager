@@ -191,3 +191,18 @@ func TestGrypeDevAdvisories(t *testing.T) {
 		t.Fatalf("merged %d, want 7", len(merged))
 	}
 }
+
+// The version is read from either form of "grype version"; "-o raw" is not a form grype has.
+func TestParseVersion(t *testing.T) {
+	asJSON := []byte("{\n \"application\": \"grype\",\n \"buildDate\": \"2026-08-27T18:40:29Z\",\n \"supportedDbSchema\": 6,\n \"syftVersion\": \"v1.51.1\",\n \"version\": \"0.118.0\"\n}\n")
+	plain := []byte("Application:         grype\nVersion:             0.118.0\nBuildDate:           2026-08-27T18:40:29Z\nGitCommit:           Homebrew\n")
+	if got := parseVersion(asJSON); got != "0.118.0" {
+		t.Fatalf("json: %q", got)
+	}
+	if got := parseVersion(plain); got != "0.118.0" {
+		t.Fatalf("plain: %q", got)
+	}
+	if got := parseVersion([]byte("unsupported output format: raw")); got != "" {
+		t.Fatalf("garbage: %q", got)
+	}
+}

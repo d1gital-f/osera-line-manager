@@ -142,6 +142,7 @@ func New(ctx context.Context, cfg Config) (*Reconciler, error) {
 	r.resolver.Logf = highf
 	if r.grype != nil {
 		r.grype.Logf = highf
+		r.grype.Say = logf
 	}
 	r.scanner.Logf = highf
 	if len(cfg.MavenRepositories) > 0 {

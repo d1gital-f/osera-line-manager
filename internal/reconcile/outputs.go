@@ -5,7 +5,9 @@
 package reconcile
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -141,7 +143,13 @@ func (r *Reconciler) stageOutputs(p *pass) error {
 	if err != nil {
 		return err
 	}
-	if string(before) != string(after) {
+	if sameRowsButForTime(before, after) {
+		// nothing but as_of moved: the file keeps its old rows and is not staged
+		err = os.WriteFile(linesPath, before, 0o644)
+		if err != nil {
+			return err
+		}
+	} else if string(before) != string(after) {
 		err = r.stage(p, "", "supported-lines.csv", after)
 		if err != nil {
 			return err
@@ -166,6 +174,41 @@ func (r *Reconciler) stageOutputs(p *pass) error {
 		}
 	}
 	return nil
+}
+
+// sameRowsButForTime says two line files agree on every row but the as_of
+// column, so a pass that found nothing new does not rewrite the rows.
+func sameRowsButForTime(a, b []byte) bool {
+	// 1. both parsed
+	ra, errA := csv.NewReader(bytes.NewReader(a)).ReadAll()
+	rb, errB := csv.NewReader(bytes.NewReader(b)).ReadAll()
+	if errA != nil || errB != nil || len(ra) == 0 || len(ra) != len(rb) {
+		return false
+	}
+
+	// 2. the as_of column, from the header
+	col := -1
+	for i, name := range ra[0] {
+		if name == "as_of" {
+			col = i
+		}
+	}
+
+	// 3. every cell but that one
+	for i := range ra {
+		if len(ra[i]) != len(rb[i]) {
+			return false
+		}
+		for j := range ra[i] {
+			if j == col && i > 0 {
+				continue
+			}
+			if ra[i][j] != rb[i][j] {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // sameButForTime says two status files agree on everything but as_of, so a

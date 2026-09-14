@@ -35,17 +35,28 @@ type GrypeScanner struct {
 	Timeout time.Duration
 	// Now is the clock, replaceable in tests.
 	Now func() time.Time
-	// Logf, when set, is told what grype does: the database, the dev advisory file.
+	// Logf, when set, is told the detail of what grype does: the dev advisory file, the fine print.
 	Logf func(format string, a ...any)
+	// Say, when set, is told the lines worth a normal log: the database current, updating, updated.
+	Say func(format string, a ...any)
 	// version remembers what the binary answered, asked once.
 	version string
 }
 
-// say logs when a logger was given.
+// say logs the fine print when a logger was given.
 func (g *GrypeScanner) say(format string, a ...any) {
 	if g.Logf != nil {
 		g.Logf(format, a...)
 	}
+}
+
+// announce logs a line worth the normal level, the detail logger when there is no other.
+func (g *GrypeScanner) announce(format string, a ...any) {
+	if g.Say != nil {
+		g.Say(format, a...)
+		return
+	}
+	g.say(format, a...)
 }
 
 // NewGrype returns a scanner on the grype binary with the database under dbDir.
@@ -94,7 +105,7 @@ func (g *GrypeScanner) NeedsUpdate() bool {
 func (g *GrypeScanner) UpdateDB(ctx context.Context) error {
 	// 1. only when needed
 	if !g.NeedsUpdate() {
-		g.say("grype: database current, %s", g.DBStatus(ctx))
+		g.announce("grype: database current, %s", g.DBStatus(ctx))
 		return nil
 	}
 	err := os.MkdirAll(g.DBDir, 0o755)
@@ -103,7 +114,7 @@ func (g *GrypeScanner) UpdateDB(ctx context.Context) error {
 	}
 
 	// 2. the update, a few hundred megabytes the first time
-	g.say("grype: updating the vulnerability database under %s", g.DBDir)
+	g.announce("grype: updating the vulnerability database under %s, a few hundred megabytes the first time", g.DBDir)
 	started := g.Now()
 	ctx, cancel := context.WithTimeout(ctx, g.timeout())
 	defer cancel()
@@ -113,7 +124,7 @@ func (g *GrypeScanner) UpdateDB(ctx context.Context) error {
 	if err != nil {
 		return errorf("grype db update: %v: %s", err, lastLines(output))
 	}
-	g.say("grype: database updated in %s, %s", g.Now().Sub(started).Round(time.Second), g.DBStatus(ctx))
+	g.announce("grype: database updated in %s, %s", g.Now().Sub(started).Round(time.Second), g.DBStatus(ctx))
 
 	// 3. the stamp
 	return os.WriteFile(g.stampPath(), []byte(g.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
@@ -138,23 +149,55 @@ func (g *GrypeScanner) DBStatus(ctx context.Context) string {
 	return strings.Join(parts, ", ")
 }
 
-// Version asks the binary once what version it is, "unknown" when it cannot say.
+// Version asks the binary once what version it is, "unknown" when it cannot say:
+// the JSON form first, the plain "Version: 0.118.0" line when JSON is refused.
 func (g *GrypeScanner) Version(ctx context.Context) string {
 	if g.version != "" {
 		return g.version
 	}
-	cmd := exec.CommandContext(ctx, g.binary(), "version", "-o", "raw")
+
+	// 1. the JSON form
+	cmd := exec.CommandContext(ctx, g.binary(), "version", "-o", "json")
 	cmd.Env = g.env()
 	output, err := cmd.Output()
-	if err != nil {
-		g.version = "unknown"
-		return g.version
+	if err == nil {
+		g.version = parseVersion(output)
 	}
-	g.version = strings.TrimSpace(string(output))
+
+	// 2. the plain form
+	if g.version == "" {
+		cmd = exec.CommandContext(ctx, g.binary(), "version")
+		cmd.Env = g.env()
+		output, err = cmd.Output()
+		if err == nil {
+			g.version = parseVersion(output)
+		}
+	}
 	if g.version == "" {
 		g.version = "unknown"
 	}
 	return g.version
+}
+
+// parseVersion reads grype's version from either output of "grype version":
+// the JSON object with a "version" field, or the plain lines with "Version:".
+func parseVersion(output []byte) string {
+	// 1. JSON
+	var v struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(output, &v) == nil && v.Version != "" {
+		return v.Version
+	}
+
+	// 2. plain
+	for _, line := range strings.Split(string(output), "\n") {
+		key, value, found := strings.Cut(line, ":")
+		if found && strings.TrimSpace(key) == "Version" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (g *GrypeScanner) timeout() time.Duration {

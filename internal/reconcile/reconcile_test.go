@@ -410,3 +410,86 @@ func TestGraphLeftInWorktreeIsKept(t *testing.T) {
 		t.Fatalf("the graph left in the worktree was lost: %v", err)
 	}
 }
+
+// 10. A pass that finds nothing new stages nothing: the second dry pass, an hour later,
+// leaves the line row's as_of at the first pass's time and the status file untouched.
+func TestNothingChangedStagesNothing(t *testing.T) {
+	// 1. the same repository as the dry run test
+	o := newOrigin(t)
+	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+testLine+",maven,org.example:bom@1.0,org.example:a@1.0,dev,a test,,,,,,,,,\n")
+	writeGraph(t, o.dir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example:a@1.0"}}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
+	backlog := map[string]any{"schema_version": "0.6.0", "title": "test backlog", "standards_pack": "OSERA-SP-0.1.0", "generated": "2026-10-01T00:00:00Z", "entry_schema": "cve-backlog-entry-0.6.0.schema.json",
+		"entries": []book.Entry{entry("CVE-2024-0001", "org.example:a", "1.0", book.EntryOpen), entry("CVE-2024-0002", "org.example:b", "1.0", book.EntryOpen)}}
+	raw, _ := json.MarshalIndent(backlog, "", " ")
+	o.write(t, "cve-backlog.json", string(raw))
+	rulesFile, err := os.ReadFile("testdata/prioritisation.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.write(t, "rules/prioritisation.yaml", string(rulesFile))
+	o.repo.CreateTag("v2026.10.01", o.commit(t, "the test backlog"), nil)
+
+	// 2. the fakes and the reconciler, the clock movable
+	gh := fakeGitHub(t)
+	defer gh.Close()
+	nx := fakeNexus(t)
+	defer nx.Close()
+	cache := t.TempDir()
+	first := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
+	now := first
+	os.WriteFile(filepath.Join(cache, "scan-"+testLine+".stamp"), []byte(first.Add(-time.Hour).Format(time.RFC3339)), 0o644)
+	cfg := Config{
+		Scanner: "sources",
+		Owner:   "dev-finos-osera-forks", Repo: "backlog", CloneDir: filepath.Join(t.TempDir(), "clone"),
+		App:         AppConfig{ID: 1, InstallationID: 2, KeyFile: keyFile(t)},
+		BoardNumber: 1,
+		Nexus:       NexusConfig{URL: nx.URL, User: "line-manager", Password: "pw", ReleaseRepository: "osera-releases-maven-01"},
+		CacheDir:    cache, Interval: time.Minute, RescanInterval: 7 * 24 * time.Hour, Dry: true,
+		RepoURL: o.dir, GitHubAPI: gh.URL, GraphQLURL: gh.URL + "/graphql",
+		Now: func() time.Time { return now },
+	}
+	r, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. the first pass writes the rows and the status file
+	_, err = r.Once(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	linesPath := filepath.Join(cfg.CloneDir, "supported-lines.csv")
+	statusPath := filepath.Join(cfg.CloneDir, "status", testLine+".json")
+	lines, err := book.ReadLines(linesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines[0].AsOf != first.Format(time.RFC3339) {
+		t.Fatalf("first pass as_of %q", lines[0].AsOf)
+	}
+	statusBefore, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. the second pass an hour later, nothing new: the row keeps the first time, the status file is the same bytes
+	now = first.Add(time.Hour)
+	_, err = r.Once(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines, err = book.ReadLines(linesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines[0].AsOf != first.Format(time.RFC3339) {
+		t.Fatalf("second pass rewrote the row: as_of %q, want %q", lines[0].AsOf, first.Format(time.RFC3339))
+	}
+	statusAfter, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(statusAfter) != string(statusBefore) {
+		t.Fatal("second pass rewrote the status file")
+	}
+}
