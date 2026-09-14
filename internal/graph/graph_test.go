@@ -169,6 +169,7 @@ func TestCycloneDXRoundTrip(t *testing.T) {
 			{Group: "org.example", Artifact: "deep", Version: "3.0", Type: "jar"},
 		},
 		Roots:        []string{"com.google.code.gson:gson:2.8.8"},
+		RootsRule:    "groups:com.google.code.gson,org.finos.osera.dev",
 		Dependencies: map[string][]string{"com.google.code.gson:gson:2.8.8": {"org.example:native:2.0:linux-x86_64"}, "org.example:native:2.0:linux-x86_64": {"org.example:deep:3.0"}, "org.example:deep:3.0": {}},
 		Unresolved:   map[string]string{"org.example:deep:3.0": "read from the POM, Maven failed: no model"},
 	}
@@ -196,6 +197,9 @@ func TestCycloneDXRoundTrip(t *testing.T) {
 	if len(back.Components) != 3 || len(back.Roots) != 1 || back.Roots[0] != "com.google.code.gson:gson:2.8.8" {
 		t.Fatalf("read back %+v", back)
 	}
+	if back.RootsRule != "groups:com.google.code.gson,org.finos.osera.dev" {
+		t.Fatalf("the roots rule was lost: %q", back.RootsRule)
+	}
 	if len(back.Dependencies["com.google.code.gson:gson:2.8.8"]) != 1 || back.Dependencies["com.google.code.gson:gson:2.8.8"][0] != "org.example:native:2.0:linux-x86_64" {
 		t.Fatalf("edges %v", back.Dependencies)
 	}
@@ -220,7 +224,7 @@ func TestResolveWithMaven(t *testing.T) {
 	anchor := book.Anchor{Group: "com.google.code.gson", Artifact: "gson", Version: "2.8.8"}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	g, err := r.Resolve(ctx, "test-gson", anchor, t.TempDir())
+	g, err := r.Resolve(ctx, "test-gson", anchor, Rule{}, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

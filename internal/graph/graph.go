@@ -67,8 +67,10 @@ type Graph struct {
 	Anchor book.Anchor
 	// Components, sorted by key, each coordinate once.
 	Components []Component
-	// Roots are the keys the anchor manages, what the resolve started from.
+	// Roots are the keys the resolve started from, chosen by the rule.
 	Roots []string
+	// RootsRule is the rule the roots were chosen with, as Rule.String writes it.
+	RootsRule string
 	// Dependencies maps a component key to the keys it depends on, direct only.
 	Dependencies map[string][]string
 	// Unresolved maps a key to why Maven could not resolve it; its edges were read from its POM instead.

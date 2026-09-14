@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/d1gital-f/osera-line-manager/internal/book"
 	"github.com/d1gital-f/osera-line-manager/internal/graph"
@@ -21,8 +22,8 @@ func graphPath(lineID string) string {
 }
 
 // needsGraph says whether the line's graph must be built: the file is missing,
-// or it was built from another anchor. A present graph from the same anchor
-// is kept.
+// it was built from another anchor or with another roots rule, or it carries
+// unresolved nodes. A finished graph from the same anchor and rule is kept.
 func needsGraph(dir string, ln book.Line) (bool, error) {
 	// 1. the anchor as declared
 	anchor, err := book.ParseAnchor(ln.Anchor)
@@ -49,6 +50,11 @@ func needsGraph(dir string, ln book.Line) (bool, error) {
 	if len(g.Unresolved) > 0 {
 		return true, nil
 	}
+
+	// 5. the roots rule the line gives today; a graph built with another one is rebuilt
+	if g.RootsRule != graph.RuleFor(anchor, ln.Components).String() {
+		return true, nil
+	}
 	return false, nil
 }
 
@@ -73,13 +79,18 @@ func (r *Reconciler) ensureGraph(ctx context.Context, p *pass, ln book.Line) err
 	if err != nil {
 		return err
 	}
-	logf("line %s: resolving %s", ln.ID, anchor)
+	rule := graph.RuleFor(anchor, ln.Components)
+	if rule.Wide() {
+		logf("line %s: resolving %s, no components declared, every managed artifact is a root", ln.ID, anchor)
+	} else {
+		logf("line %s: resolving %s, roots from the groups %s", ln.ID, anchor, strings.Join(rule.Groups, ", "))
+	}
 	work := r.cachePath(filepath.Join("resolve", ln.ID))
 	err = os.MkdirAll(work, 0o755)
 	if err != nil {
 		return err
 	}
-	g, err := r.resolver.Resolve(ctx, ln.ID, anchor, work)
+	g, err := r.resolver.Resolve(ctx, ln.ID, anchor, rule, work)
 	if err != nil {
 		return fmt.Errorf("line %s: %w", ln.ID, err)
 	}

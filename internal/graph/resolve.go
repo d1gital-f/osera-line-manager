@@ -116,16 +116,16 @@ func (r *Resolver) workers() int {
 
 // Resolve builds the graph of a line from its anchor. workDir holds one fresh
 // directory per probe, removed when the probe is done.
-func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Anchor, workDir string) (*Graph, error) {
-	// 1. the anchor's model: a BOM manages the roots, a jar is the single root
+func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Anchor, rule Rule, workDir string) (*Graph, error) {
+	// 1. the anchor's model: a BOM manages the roots, the rule picks them, a jar is the single root
 	m, err := r.readModel(ctx, anchor.Group, anchor.Artifact, anchor.Version)
 	if err != nil {
 		return nil, errorf("anchor %s: %w", anchor, err)
 	}
-	g := &Graph{LineID: lineID, Anchor: anchor, Dependencies: map[string][]string{}, Unresolved: map[string]string{}}
+	g := &Graph{LineID: lineID, Anchor: anchor, RootsRule: rule.String(), Dependencies: map[string][]string{}, Unresolved: map[string]string{}}
 	var roots []Component
 	if m.Packaging == "pom" {
-		roots, err = r.roots(ctx, m.Managed)
+		roots, err = r.roots(ctx, selectRoots(m.Managed, rule))
 		if err != nil {
 			return nil, err
 		}

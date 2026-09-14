@@ -80,6 +80,13 @@ func TestNeedsGraph(t *testing.T) {
 	if err != nil || needed {
 		t.Fatalf("present: needed %v err %v", needed, err)
 	}
+
+	// the line gains components: the roots rule changes, the wide graph is rebuilt narrow
+	ln.Components = []string{"org.example:a@1.0"}
+	needed, err = needsGraph(dir, ln)
+	if err != nil || !needed {
+		t.Fatalf("other roots rule: needed %v err %v", needed, err)
+	}
 }
 
 func writeGraph(t *testing.T, dir string, ln book.Line, anchor book.Anchor) {
@@ -88,7 +95,7 @@ func writeGraph(t *testing.T, dir string, ln book.Line, anchor book.Anchor) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	g := &graph.Graph{LineID: ln.ID, Anchor: anchor, Components: []graph.Component{{Group: "org.example", Artifact: "a", Version: "1.0"}}, Dependencies: map[string][]string{}}
+	g := &graph.Graph{LineID: ln.ID, Anchor: anchor, RootsRule: graph.RuleFor(anchor, ln.Components).String(), Components: []graph.Component{{Group: "org.example", Artifact: "a", Version: "1.0"}}, Dependencies: map[string][]string{}}
 	if err := graph.Write(path, g, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +270,7 @@ func TestOnceDry(t *testing.T) {
 	// 1. the backlog repository with one line, its graph, two entries, the rules
 	o := newOrigin(t)
 	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+testLine+",maven,org.example:bom@1.0,org.example:a@1.0,dev,a test,,,,,,,,,\n")
-	writeGraph(t, o.dir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0"}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
+	writeGraph(t, o.dir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example:a@1.0"}}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
 	backlog := map[string]any{"schema_version": "0.6.0", "title": "test backlog", "standards_pack": "OSERA-SP-0.1.0", "generated": "2026-10-01T00:00:00Z", "entry_schema": "cve-backlog-entry-0.6.0.schema.json",
 		"entries": []book.Entry{entry("CVE-2024-0001", "org.example:a", "1.0", book.EntryOpen), entry("CVE-2024-0002", "org.example:b", "1.0", book.EntryOpen)}}
 	raw, _ := json.MarshalIndent(backlog, "", " ")

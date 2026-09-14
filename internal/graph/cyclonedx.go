@@ -74,7 +74,7 @@ func Write(path string, g *Graph, now time.Time) error {
 
 	// 2. the anchor, with the line id
 	anchor := Component{Group: g.Anchor.Group, Artifact: g.Anchor.Artifact, Version: g.Anchor.Version, Type: "pom"}
-	f.Metadata.Component = cdxComponent{Type: "library", BOMRef: anchor.PURL(), Group: anchor.Group, Name: anchor.Artifact, Version: anchor.Version, PURL: anchor.PURL(), Properties: []cdxProperty{{Name: LineProperty, Value: g.LineID}}}
+	f.Metadata.Component = cdxComponent{Type: "library", BOMRef: anchor.PURL(), Group: anchor.Group, Name: anchor.Artifact, Version: anchor.Version, PURL: anchor.PURL(), Properties: []cdxProperty{{Name: LineProperty, Value: g.LineID}, {Name: RootsProperty, Value: g.RootsRule}}}
 
 	// 3. the components and the edges, the anchor depending on the roots
 	refs := map[string]string{}
@@ -132,6 +132,9 @@ func Read(path string) (*Graph, error) {
 	for _, p := range f.Metadata.Component.Properties {
 		if p.Name == LineProperty {
 			g.LineID = p.Value
+		}
+		if p.Name == RootsProperty {
+			g.RootsRule = p.Value
 		}
 	}
 
