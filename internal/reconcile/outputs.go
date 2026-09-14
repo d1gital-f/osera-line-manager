@@ -228,6 +228,10 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 		return err
 	}
 	logf("merged pull request #%d", number)
+	err = r.auth(ctx)
+	if err != nil {
+		return err
+	}
 	_, err = r.clone.Fetch(ctx)
 	if err != nil {
 		return err

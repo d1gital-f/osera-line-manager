@@ -26,18 +26,33 @@ type Client struct {
 	Owner string
 	// Number is the project number, as in its URL.
 	Number int
-	Token  string
+	// Tokens gives the token for every request, refreshed by the App when it is about to expire;
+	// nil sends no token.
+	Tokens TokenSource
 	HTTP   *http.Client
 	// URL is GitHub's GraphQL endpoint, a test server in tests.
 	URL string
 }
 
 // New returns a client with sane timeouts.
-func New(owner string, number int, token string) *Client {
+// TokenSource gives a token to call GitHub with; the App is one.
+type TokenSource interface {
+	Token(ctx context.Context) (string, error)
+}
+
+// StaticToken is a TokenSource that always answers the same, for tests and tools.
+type StaticToken string
+
+// Token is the string itself.
+func (t StaticToken) Token(context.Context) (string, error) {
+	return string(t), nil
+}
+
+func New(owner string, number int, tokens TokenSource) *Client {
 	return &Client{
 		Owner:  owner,
 		Number: number,
-		Token:  token,
+		Tokens: tokens,
 		HTTP:   &http.Client{Timeout: 30 * time.Second},
 		URL:    "https://api.github.com/graphql",
 	}
@@ -179,8 +194,14 @@ func (c *Client) page(ctx context.Context, after string) (*page, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
+	if c.Tokens != nil {
+		token, err := c.Tokens.Token(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("the board's token: %w", err)
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
 	}
 
 	// 2. the answer

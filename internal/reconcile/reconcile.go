@@ -185,7 +185,7 @@ func New(ctx context.Context, cfg Config) (*Reconciler, error) {
 	}
 
 	// 5. the board and the release repository
-	r.board = board.New(cfg.Owner, cfg.BoardNumber, "")
+	r.board = board.New(cfg.Owner, cfg.BoardNumber, nil)
 	if cfg.GraphQLURL != "" {
 		r.board.URL = cfg.GraphQLURL
 	}
@@ -193,8 +193,10 @@ func New(ctx context.Context, cfg Config) (*Reconciler, error) {
 	return r, nil
 }
 
-// auth gives the clone and the board the App's current token. The backlog
-// repository is public, so a fetch works without it; the board does not.
+// auth gives the clone the App's current token and the board the App itself, so
+// every request asks for a token and a pass longer than the token's hour still
+// works: the App refreshes it five minutes before expiry. Called before every
+// fetch. The backlog repository is public, so a fetch works without it.
 func (r *Reconciler) auth(ctx context.Context) error {
 	if r.app == nil {
 		return nil
@@ -204,7 +206,7 @@ func (r *Reconciler) auth(ctx context.Context) error {
 		return err
 	}
 	r.clone.Auth = &githttp.BasicAuth{Username: "x-access-token", Password: token}
-	r.board.Token = token
+	r.board.Tokens = r.app
 	return nil
 }
 

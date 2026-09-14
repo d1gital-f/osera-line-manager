@@ -352,3 +352,61 @@ func TestOnceDry(t *testing.T) {
 		t.Fatal("the evidence read should be cached")
 	}
 }
+
+// 9. A graph a failed pass left in the worktree is kept on the following pass, even
+// when origin moved on in between: no resolve, the line is reported from that graph.
+func TestGraphLeftInWorktreeIsKept(t *testing.T) {
+	// 1. the backlog repository with one line and no graph
+	o := newOrigin(t)
+	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+testLine+",maven,org.example:bom@1.0,org.example:a@1.0,dev,a test,,,,,,,,,\n")
+	backlog := map[string]any{"schema_version": "0.6.0", "title": "test backlog", "standards_pack": "OSERA-SP-0.1.0", "generated": "2026-10-01T00:00:00Z", "entry_schema": "cve-backlog-entry-0.6.0.schema.json",
+		"entries": []book.Entry{entry("CVE-2024-0001", "org.example:a", "1.0", book.EntryOpen)}}
+	raw, _ := json.MarshalIndent(backlog, "", " ")
+	o.write(t, "cve-backlog.json", string(raw))
+	rulesFile, err := os.ReadFile("testdata/prioritisation.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.write(t, "rules/prioritisation.yaml", string(rulesFile))
+	o.repo.CreateTag("v2026.10.01", o.commit(t, "the test backlog"), nil)
+
+	// 2. the reconciler, its clone made
+	gh := fakeGitHub(t)
+	defer gh.Close()
+	nx := fakeNexus(t)
+	defer nx.Close()
+	cache := t.TempDir()
+	now := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
+	os.WriteFile(filepath.Join(cache, "scan-"+testLine+".stamp"), []byte(now.Add(-time.Hour).Format(time.RFC3339)), 0o644)
+	cfg := Config{
+		Scanner: "sources",
+		Owner:   "dev-finos-osera-forks", Repo: "backlog", CloneDir: filepath.Join(t.TempDir(), "clone"),
+		App:         AppConfig{ID: 1, InstallationID: 2, KeyFile: keyFile(t)},
+		BoardNumber: 1,
+		Nexus:       NexusConfig{URL: nx.URL, User: "line-manager", Password: "pw", ReleaseRepository: "osera-releases-maven-01"},
+		CacheDir:    cache, Interval: time.Minute, RescanInterval: 7 * 24 * time.Hour, Dry: true,
+		RepoURL: o.dir, GitHubAPI: gh.URL, GraphQLURL: gh.URL + "/graphql",
+		Now: func() time.Time { return now },
+	}
+	r, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. what a failed pass leaves: the graph in the worktree, not committed; then origin moves on
+	writeGraph(t, cfg.CloneDir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example:a@1.0"}}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
+	o.write(t, "README.md", "moved on\n")
+	o.commit(t, "someone else's commit")
+
+	// 4. the following pass keeps the graph: no resolve (there is no anchor to fetch), one record
+	records, err := r.Once(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].Line != testLine {
+		t.Fatalf("records %+v", records)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.CloneDir, filepath.FromSlash(graphPath(testLine)))); err != nil {
+		t.Fatalf("the graph left in the worktree was lost: %v", err)
+	}
+}

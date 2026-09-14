@@ -10,6 +10,7 @@
 package repo
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -136,11 +137,58 @@ func (c *Clone) Fetch(ctx context.Context) (FetchResult, error) {
 	if err != nil {
 		return res, err
 	}
+
+	// 5. on a fast forward, a graph built in a pass that failed before its commit stays:
+	//    the worktree files under graphs/ are kept across the move; a reset drops them
+	var kept map[string][]byte
+	if !res.Reset {
+		kept = c.readTree(GraphsDir)
+	}
 	err = worktree.Reset(&git.ResetOptions{Commit: res.After, Mode: git.HardReset})
 	if err != nil {
 		return res, fmt.Errorf("moving %s to origin: %w", Branch, err)
 	}
+	for rel, content := range kept {
+		path := filepath.Join(c.Dir, filepath.FromSlash(rel))
+		now, readErr := os.ReadFile(path)
+		if readErr == nil && bytes.Equal(now, content) {
+			continue
+		}
+		err = os.MkdirAll(filepath.Dir(path), 0o755)
+		if err != nil {
+			return res, err
+		}
+		err = os.WriteFile(path, content, 0o644)
+		if err != nil {
+			return res, err
+		}
+	}
 	return res, nil
+}
+
+// GraphsDir is the folder of the graphs in the repository, the one folder a fetch keeps.
+const GraphsDir = "graphs"
+
+// readTree reads every file under a folder of the worktree, keyed by its slash path.
+func (c *Clone) readTree(dir string) map[string][]byte {
+	out := map[string][]byte{}
+	root := filepath.Join(c.Dir, dir)
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		rel, relErr := filepath.Rel(c.Dir, path)
+		if relErr != nil {
+			return nil
+		}
+		out[filepath.ToSlash(rel)] = content
+		return nil
+	})
+	return out
 }
 
 // Head returns the commit id and the tree id the clone is at.

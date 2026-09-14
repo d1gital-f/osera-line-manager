@@ -39,6 +39,9 @@ func newOrigin(t *testing.T) *origin {
 
 func (o *origin) commit(t *testing.T, path, content, message string) plumbing.Hash {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(o.dir, path)), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(o.dir, path), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -207,5 +210,51 @@ func TestVersionLess(t *testing.T) {
 		if versionLess(tc.a, tc.b) != tc.less {
 			t.Errorf("versionLess(%s, %s) = %v", tc.a, tc.b, !tc.less)
 		}
+	}
+}
+
+// 6. A fast forward keeps what a failed pass left under graphs/: an untracked graph and
+// a modified tracked one survive the move; a reset does not keep them.
+func TestFetchKeepsGraphs(t *testing.T) {
+	o := newOrigin(t)
+	o.commit(t, "graphs/spring-boot-2.7.x/maven.cdx.json", "old graph\n", "the first graph")
+	c, err := Open(context.Background(), filepath.Join(t.TempDir(), "clone"), o.dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. a pass rebuilt one graph and built a new one, then failed before its commit
+	tracked := filepath.Join(c.Dir, "graphs", "spring-boot-2.7.x", "maven.cdx.json")
+	untracked := filepath.Join(c.Dir, "graphs", "dev-1.0.x", "maven.cdx.json")
+	if err := os.WriteFile(tracked, []byte("new graph\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(untracked), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(untracked, []byte("dev graph\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. origin moved on (someone merged a line), the fetch fast forwards
+	o.commit(t, "supported-lines.csv", "line_id\nspring-boot-2.7.x\ndev-1.0.x\n", "a line")
+	res, err := c.Fetch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Reset {
+		t.Fatal("a fast forward reported as a reset")
+	}
+	raw, _ := os.ReadFile(tracked)
+	if string(raw) != "new graph\n" {
+		t.Fatalf("the rebuilt graph was lost: %q", raw)
+	}
+	raw, _ = os.ReadFile(untracked)
+	if string(raw) != "dev graph\n" {
+		t.Fatalf("the new graph was lost: %q", raw)
+	}
+	lines, _ := c.File("supported-lines.csv")
+	if string(lines) != "line_id\nspring-boot-2.7.x\ndev-1.0.x\n" {
+		t.Fatalf("the worktree did not move: %q", lines)
 	}
 }

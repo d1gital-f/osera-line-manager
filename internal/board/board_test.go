@@ -55,10 +55,28 @@ func server(t *testing.T) *httptest.Server {
 }
 
 // 1. Two pages, one query each: four cards, the draft and the title without a CVE skipped.
+// The token comes from the provider on every request.
+func TestTokenProvider(t *testing.T) {
+	var seen string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"data":{"organization":{"projectV2":{"items":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}}`))
+	}))
+	defer srv.Close()
+	c := New("dev-finos-osera-forks", 1, StaticToken("fresh"))
+	c.URL = srv.URL
+	if _, err := c.Read(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if seen != "Bearer fresh" {
+		t.Fatalf("authorization %q", seen)
+	}
+}
+
 func TestReadTwoPages(t *testing.T) {
 	s := server(t)
 	defer s.Close()
-	c := New("dev-finos-osera-forks", 1, "")
+	c := New("dev-finos-osera-forks", 1, StaticToken("t0k"))
 	c.URL = s.URL
 	cards, err := c.Read(context.Background())
 	if err != nil {
@@ -79,7 +97,7 @@ func TestReadTwoPages(t *testing.T) {
 func TestIssues(t *testing.T) {
 	s := server(t)
 	defer s.Close()
-	c := New("dev-finos-osera-forks", 1, "")
+	c := New("dev-finos-osera-forks", 1, StaticToken("t0k"))
 	c.URL = s.URL
 	cards, err := c.Read(context.Background())
 	if err != nil {
@@ -113,7 +131,7 @@ func TestGraphQLError(t *testing.T) {
 		w.Write([]byte(`{"data":null,"errors":[{"message":"Could not resolve to a ProjectV2 with the number 9."}]}`))
 	}))
 	defer s.Close()
-	c := New("dev-finos-osera-forks", 9, "")
+	c := New("dev-finos-osera-forks", 9, StaticToken("t0k"))
 	c.URL = s.URL
 	if _, err := c.Read(context.Background()); err == nil {
 		t.Fatal("expected an error")
