@@ -61,11 +61,16 @@ func (r *Resolver) server(base string) (Server, bool) {
 	return Server{}, false
 }
 
-// settingsXML is the Maven settings file that carries those credentials, one server per
-// repository index, the ids matching the ones the throwaway POM declares.
+// settingsXML is the Maven settings file for a probe: one server per repository that
+// has credentials, the ids matching the ones the throwaway POM declares, and the
+// default http blocker of Maven 3.8 and later overridden, so an in cluster repository
+// on plain http (the Nexus service address) is allowed. The override is the one Maven
+// documents: a mirror with the blocker's id pointed at nothing.
 func (r *Resolver) settingsXML() string {
 	var b strings.Builder
-	b.WriteString(`<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">` + "\n<servers>\n")
+	b.WriteString(`<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">` + "\n")
+	b.WriteString("<mirrors>\n<mirror><id>maven-default-http-blocker</id><mirrorOf>osera-unblock-http</mirrorOf><name>http repositories allowed for the in cluster Nexus</name><url>http://0.0.0.0/</url><blocked>false</blocked></mirror>\n</mirrors>\n")
+	b.WriteString("<servers>\n")
 	for i, u := range r.repositories() {
 		srv, found := r.server(u)
 		if !found {
@@ -77,14 +82,14 @@ func (r *Resolver) settingsXML() string {
 	return b.String()
 }
 
-// needsSettings says whether any repository has credentials.
+// needsSettings says whether a settings file must accompany the probe: any repository
+// other than Central, since it may be plain http or need credentials.
 func (r *Resolver) needsSettings() bool {
-	for _, u := range r.repositories() {
-		if _, found := r.server(u); found {
-			return true
-		}
+	repos := r.repositories()
+	if len(repos) == 1 && repos[0] == Central {
+		return false
 	}
-	return false
+	return true
 }
 
 func xmlEscape(s string) string {

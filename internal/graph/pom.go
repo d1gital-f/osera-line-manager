@@ -117,7 +117,7 @@ func (r *Resolver) readModel(ctx context.Context, group, artifact, version strin
 			break
 		}
 		var p pom
-		err = xml.Unmarshal(raw, &p)
+		err = xmlUnmarshal(raw, &p)
 		if err != nil {
 			return nil, errorf("%s:%s:%s: %w", g, a, v, err)
 		}

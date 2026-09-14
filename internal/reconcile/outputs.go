@@ -289,8 +289,15 @@ func (r *Reconciler) waitForChecks(ctx context.Context, sha string) (bool, error
 		if err != nil {
 			return false, err
 		}
+
+		// 1. the named check must exist: GitHub creates the check run a few seconds
+		//    after the pull request opens, and no check at all is not green
 		pending := false
+		found := false
 		for _, c := range checks {
+			if c.Name == requiredCheck {
+				found = true
+			}
 			switch c.Conclusion {
 			case "":
 				pending = true
@@ -299,9 +306,11 @@ func (r *Reconciler) waitForChecks(ctx context.Context, sha string) (bool, error
 				return false, nil
 			}
 		}
-		if !pending {
+		if found && !pending {
 			return true, nil
 		}
+
+		// 2. wait, bounded
 		if r.now().After(deadline) {
 			return false, nil
 		}
@@ -312,6 +321,9 @@ func (r *Reconciler) waitForChecks(ctx context.Context, sha string) (bool, error
 		}
 	}
 }
+
+// requiredCheck is the check a pull request on the backlog must pass before the line manager merges it.
+const requiredCheck = "validate"
 
 // settleIssues closes the issue of every entry that became fixed or not
 // remediable this pass, and reopens the ones whose declaration was withdrawn.

@@ -44,6 +44,11 @@ func needsGraph(dir string, ln book.Line) (bool, error) {
 	if err != nil {
 		return true, nil
 	}
+
+	// 4. a graph with unresolved nodes is not finished: built again until every probe answers
+	if len(g.Unresolved) > 0 {
+		return true, nil
+	}
 	return false, nil
 }
 
