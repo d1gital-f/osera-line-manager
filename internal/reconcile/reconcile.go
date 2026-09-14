@@ -19,7 +19,6 @@ import (
 	"github.com/d1gital-f/osera-line-manager/internal/board"
 	"github.com/d1gital-f/osera-line-manager/internal/book"
 	"github.com/d1gital-f/osera-line-manager/internal/ledger"
-	"github.com/d1gital-f/osera-line-manager/internal/source"
 	"github.com/d1gital-f/osera-line-manager/internal/status"
 )
 
@@ -45,7 +44,7 @@ type Config struct {
 
 // Once runs one pass and returns the records written.
 func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
-	// 1. the book: at its latest tag on GitHub, or from a local directory for experiments
+	// 1. the book and the lines, from a local directory until the clone is wired in
 	var b *book.Book
 	var lines []book.Line
 	tag, commit := "", ""
@@ -65,23 +64,7 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 			return nil, err
 		}
 	} else {
-		src := source.New(cfg.Owner, cfg.BacklogRepo, cfg.GitHubToken)
-		tag, commit, err = src.LatestTag(ctx)
-		if err != nil {
-			return nil, err
-		}
-		rawBook, err := src.File(ctx, tag, "cve-backlog.json")
-		if err != nil {
-			return nil, err
-		}
-		rawLines, err := src.File(ctx, tag, "supported-lines.csv")
-		if err != nil {
-			return nil, err
-		}
-		b, lines, err = parse(rawBook, rawLines)
-		if err != nil {
-			return nil, err
-		}
+		return nil, fmt.Errorf("a local directory is required until the clone is wired in (--local)")
 	}
 
 	// 2. the ledger, a file until the gate writes one
@@ -154,31 +137,6 @@ func Loop(ctx context.Context, cfg Config, interval time.Duration) {
 		case <-time.After(interval):
 		}
 	}
-}
-
-func parse(rawBook, rawLines []byte) (*book.Book, []book.Line, error) {
-	dir, err := os.MkdirTemp("", "line-manager")
-	if err != nil {
-		return nil, nil, err
-	}
-	defer os.RemoveAll(dir)
-	bookPath := filepath.Join(dir, "cve-backlog.json")
-	linesPath := filepath.Join(dir, "supported-lines.csv")
-	if err := os.WriteFile(bookPath, rawBook, 0o600); err != nil {
-		return nil, nil, err
-	}
-	if err := os.WriteFile(linesPath, rawLines, 0o600); err != nil {
-		return nil, nil, err
-	}
-	b, err := book.Read(bookPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	lines, err := book.ReadLines(linesPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	return b, lines, nil
 }
 
 func shortCommit(c string) string {

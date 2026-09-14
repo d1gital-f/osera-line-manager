@@ -41,3 +41,5 @@ A plain Go service in the shape of a controller: one reconcile function per line
 | `internal/rules` | the prioritisation rules read from `rules/prioritisation.yaml` as data |
 | `internal/scan` | the advisory sources (OSV, CISA KEV, FIRST EPSS, NVD) through a disk cache, the dev only advisory file, the rules applied, `cve-backlog.json` and `cve-excluded.json` written |
 | `internal/graph` | the resolve: the anchor's managed artifacts as roots, one Maven probe per artifact inside the pod, breadth first; the graph as CycloneDX 1.6, written, read back and checked |
+| `internal/repo` | the backlog repository: a local clone fetched and fast forwarded (never merged, never rebased), the App's installation token, and every write through the git database API as the App so GitHub signs the commit: commit, pull request, merge, tag, issue close |
+| `internal/intent` | the write ahead note left before every write outside the process, so the line manager never reacts to its own writes |
