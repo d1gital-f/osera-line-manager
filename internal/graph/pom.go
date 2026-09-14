@@ -78,6 +78,9 @@ func (r *Resolver) fetchPOM(ctx context.Context, group, artifact, version string
 			return nil, err
 		}
 		req.Header.Set("User-Agent", "osera-line-manager")
+		if srv, found := r.server(base); found {
+			req.SetBasicAuth(srv.User, srv.Password)
+		}
 		resp, err := r.HTTP.Do(req)
 		if err != nil {
 			last = err

@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
@@ -58,6 +59,9 @@ type Config struct {
 	Nexus       NexusConfig
 	// WebhookSecret is what Nexus signs its deliveries with.
 	WebhookSecret string
+	// MavenRepositories are the repositories the resolver reads, in order, Central alone when
+	// empty; a repository under the Nexus address is read with the Nexus account.
+	MavenRepositories []string
 	// CacheDir holds the scan caches, the evidence cache, the scan stamps and the intent file.
 	CacheDir string
 	// Interval is the time between passes; RescanInterval between two scans of one line's graph.
@@ -117,6 +121,14 @@ func New(ctx context.Context, cfg Config) (*Reconciler, error) {
 	// 1. the scanner and the resolver, the same in every mode
 	r.scanner = scan.New(filepath.Join(cfg.CacheDir, "scan"))
 	r.resolver = graph.NewResolver()
+	if len(cfg.MavenRepositories) > 0 {
+		r.resolver.RepositoryURLs = cfg.MavenRepositories
+		for _, u := range cfg.MavenRepositories {
+			if cfg.Nexus.URL != "" && strings.HasPrefix(u, strings.TrimSuffix(cfg.Nexus.URL, "/")) {
+				r.resolver.Servers = append(r.resolver.Servers, graph.Server{URL: u, User: cfg.Nexus.User, Password: cfg.Nexus.Password})
+			}
+		}
+	}
 
 	// 2. local mode reads a directory and stops there
 	if cfg.LocalDir != "" {

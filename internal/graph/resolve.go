@@ -7,6 +7,7 @@ package graph
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"os"
@@ -25,6 +26,8 @@ type Resolver struct {
 	HTTP *http.Client
 	// RepositoryURLs are the repositories Maven and the POM reader use, Central when empty.
 	RepositoryURLs []string
+	// Servers are the credentials for the repositories that need them, matched by URL prefix.
+	Servers []Server
 	// Workers is how many probes run at once, four when zero.
 	Workers int
 	// Maven is the binary, mvn on PATH when empty.
@@ -36,6 +39,58 @@ type Resolver struct {
 // NewResolver returns a resolver on Central with four workers.
 func NewResolver() *Resolver {
 	return &Resolver{HTTP: &http.Client{Timeout: 60 * time.Second}, Workers: 4, Maven: "mvn", ProbeTimeout: 10 * time.Minute}
+}
+
+// Server is one repository's credentials: the line manager's own Nexus account for the
+// release repository, which refuses anonymous reads. Central needs none.
+type Server struct {
+	URL      string
+	User     string
+	Password string
+}
+
+// server returns the credentials for a repository URL, if any.
+func (r *Resolver) server(base string) (Server, bool) {
+	for _, srv := range r.Servers {
+		if strings.HasPrefix(base, strings.TrimSuffix(srv.URL, "/")) {
+			return srv, true
+		}
+	}
+	return Server{}, false
+}
+
+// settingsXML is the Maven settings file that carries those credentials, one server per
+// repository index, the ids matching the ones the throwaway POM declares.
+func (r *Resolver) settingsXML() string {
+	var b strings.Builder
+	b.WriteString(`<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">` + "\n<servers>\n")
+	for i, u := range r.repositories() {
+		srv, found := r.server(u)
+		if !found {
+			continue
+		}
+		fmt.Fprintf(&b, "<server><id>osera-%d</id><username>%s</username><password>%s</password></server>\n", i, xmlEscape(srv.User), xmlEscape(srv.Password))
+	}
+	b.WriteString("</servers>\n</settings>\n")
+	return b.String()
+}
+
+// needsSettings says whether any repository has credentials.
+func (r *Resolver) needsSettings() bool {
+	for _, u := range r.repositories() {
+		if _, found := r.server(u); found {
+			return true
+		}
+	}
+	return false
+}
+
+func xmlEscape(s string) string {
+	var b strings.Builder
+	if err := xml.EscapeText(&b, []byte(s)); err != nil {
+		return ""
+	}
+	return b.String()
 }
 
 func (r *Resolver) repositories() []string {
@@ -294,7 +349,16 @@ func (r *Resolver) runMaven(ctx context.Context, dir, out string) string {
 	if mvn == "" {
 		mvn = "mvn"
 	}
-	cmd := exec.CommandContext(ctx, mvn, "-B", "-q", "org.apache.maven.plugins:maven-dependency-plugin:3.8.1:tree", "-DoutputType=json", "-DoutputFile="+out)
+	args := []string{"-B", "-q", "org.apache.maven.plugins:maven-dependency-plugin:3.8.1:tree", "-DoutputType=json", "-DoutputFile=" + out}
+	// the credentials for a repository that needs them, in a settings file next to the probe
+	if r.needsSettings() {
+		settings := filepath.Join(dir, "settings.xml")
+		if err := os.WriteFile(settings, []byte(r.settingsXML()), 0o600); err != nil {
+			return "settings: " + err.Error()
+		}
+		args = append(args, "-s", settings)
+	}
+	cmd := exec.CommandContext(ctx, mvn, args...)
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
 	if err == nil {

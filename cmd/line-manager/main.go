@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -101,6 +102,7 @@ func runCommand(args []string) {
 	rescan := fs.Duration("rescan-interval", envDuration("RESCAN_INTERVAL", 7*24*time.Hour), "time between two scans of one line (RESCAN_INTERVAL)")
 	devAdvisories := fs.String("dev-advisories", env("DEV_ADVISORIES", ""), "the dev only advisory file inside the repository, empty in production (DEV_ADVISORIES)")
 	listen := fs.String("listen", env("LISTEN", ":8080"), "the address of the health, status and webhook server (LISTEN)")
+	mavenRepositories := fs.String("maven-repositories", env("MAVEN_REPOSITORIES", ""), "the repositories the resolver reads, comma separated, Central when empty; one under the Nexus address is read with the Nexus account (MAVEN_REPOSITORIES)")
 	dry := fs.Bool("dry", envBool("DRY", false), "compute and log, write nothing to GitHub or Nexus (DRY)")
 	once := fs.Bool("once", false, "one pass, then exit")
 	local := fs.String("local", "", "a directory with the backlog files, read instead of the clone; no GitHub, no Nexus")
@@ -109,21 +111,22 @@ func runCommand(args []string) {
 
 	// 1. the secrets, from the environment only
 	cfg := reconcile.Config{
-		Owner:          *owner,
-		Repo:           *repoName,
-		CloneDir:       *cloneDir,
-		App:            reconcile.AppConfig{ID: *appID, InstallationID: *installationID, KeyFile: *keyFile},
-		BoardNumber:    *boardNumber,
-		Nexus:          reconcile.NexusConfig{URL: *nexusURL, User: *nexusUser, Password: os.Getenv("NEXUS_PASSWORD"), ReleaseRepository: *releaseRepository},
-		WebhookSecret:  os.Getenv("WEBHOOK_SECRET"),
-		CacheDir:       *cacheDir,
-		Interval:       *interval,
-		RescanInterval: *rescan,
-		DevAdvisories:  *devAdvisories,
-		Dry:            *dry,
-		Listen:         *listen,
-		LocalDir:       *local,
-		LocalVersion:   *localVersion,
+		Owner:             *owner,
+		Repo:              *repoName,
+		CloneDir:          *cloneDir,
+		App:               reconcile.AppConfig{ID: *appID, InstallationID: *installationID, KeyFile: *keyFile},
+		BoardNumber:       *boardNumber,
+		Nexus:             reconcile.NexusConfig{URL: *nexusURL, User: *nexusUser, Password: os.Getenv("NEXUS_PASSWORD"), ReleaseRepository: *releaseRepository},
+		WebhookSecret:     os.Getenv("WEBHOOK_SECRET"),
+		MavenRepositories: splitList(*mavenRepositories),
+		CacheDir:          *cacheDir,
+		Interval:          *interval,
+		RescanInterval:    *rescan,
+		DevAdvisories:     *devAdvisories,
+		Dry:               *dry,
+		Listen:            *listen,
+		LocalDir:          *local,
+		LocalVersion:      *localVersion,
 	}
 	if cfg.LocalDir == "" {
 		if cfg.App.ID == 0 || cfg.App.InstallationID == 0 {
@@ -203,4 +206,16 @@ func fail(err error) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// splitList turns a comma separated flag into its items, blanks dropped.
+func splitList(v string) []string {
+	var out []string
+	for _, item := range strings.Split(v, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
