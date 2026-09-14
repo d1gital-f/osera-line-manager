@@ -33,6 +33,8 @@ type pass struct {
 	changedLines []string
 	// backlogChanged says cve-backlog.json is among the staged files, which is what a tag is for.
 	backlogChanged bool
+	// failed names the lines whose graph or scan failed this pass: logged, skipped, retried next pass.
+	failed map[string]error
 	// own is the intent note found at the start of the pass, nil when none.
 	own     *intent.Intent
 	records []status.Record
@@ -49,18 +51,25 @@ func (r *Reconciler) Once(ctx context.Context) ([]status.Record, error) {
 	}
 
 	// 2. the graph of every line, resolved when missing or built from another anchor
+	p.failed = map[string]error{}
 	for _, ln := range p.lines {
 		err = r.ensureGraph(ctx, p, ln)
 		if err != nil {
-			return nil, err
+			// one line's resolve failing does not stop the others; it is retried next pass
+			logf("line %s: graph: %v (skipped this pass)", ln.ID, err)
+			p.failed[ln.ID] = err
 		}
 	}
 
 	// 3. the scan of every line whose graph is new or whose last scan is old, merged into the backlog
 	for _, ln := range p.lines {
+		if p.failed[ln.ID] != nil {
+			continue
+		}
 		err = r.scanLine(ctx, p, ln)
 		if err != nil {
-			return nil, err
+			logf("line %s: scan: %v (skipped this pass)", ln.ID, err)
+			p.failed[ln.ID] = err
 		}
 	}
 
@@ -76,6 +85,9 @@ func (r *Reconciler) Once(ctx context.Context) ([]status.Record, error) {
 
 	// 5. one record per line
 	for _, ln := range p.lines {
+		if p.failed[ln.ID] != nil {
+			continue
+		}
 		rec := status.Compute(status.Inputs{
 			Line:              ln,
 			BookVersion:       p.bookVersion,
