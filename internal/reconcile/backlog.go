@@ -205,13 +205,20 @@ func (r *Reconciler) mergeExcluded(lineID string, scanned []scan.Excluded) ([]sc
 
 // stageBacklog writes cve-backlog.json, cve-excluded.json and cve-backlog.md and stages them.
 func (r *Reconciler) stageBacklog(p *pass, lineID string, header scan.Header, excluded []scan.Excluded) error {
-	// 1. the two JSON files, written by the scan package in its order
+	// 1. the three files as they are, so a rewrite that only moves the stamp is not a change
 	backlogPath := r.path("cve-backlog.json")
+	excludedPath := r.path("cve-excluded.json")
+	tablePath := r.path("cve-backlog.md")
+	oldBacklog, _ := os.ReadFile(backlogPath)
+	oldExcluded, _ := os.ReadFile(excludedPath)
+	oldTable, _ := os.ReadFile(tablePath)
+
+	// 2. the two JSON files, written by the scan package in its order
 	err := scan.WriteBacklog(backlogPath, header, p.book.Entries)
 	if err != nil {
 		return err
 	}
-	err = scan.WriteExcluded(r.path("cve-excluded.json"), header, excluded)
+	err = scan.WriteExcluded(excludedPath, header, excluded)
 	if err != nil {
 		return err
 	}
@@ -219,12 +226,22 @@ func (r *Reconciler) stageBacklog(p *pass, lineID string, header scan.Header, ex
 	if err != nil {
 		return err
 	}
-	rawExcluded, err := os.ReadFile(r.path("cve-excluded.json"))
+	rawExcluded, err := os.ReadFile(excludedPath)
 	if err != nil {
 		return err
 	}
+	rawTable := []byte(table(p.book))
 
-	// 2. the readable table
+	// 3. nothing but the stamps moved: the old files stay, nothing is staged
+	if sameButForGenerated(oldBacklog, rawBacklog) && sameButForGenerated(oldExcluded, rawExcluded) && sameTableButForGenerated(oldTable, rawTable) {
+		err = os.WriteFile(backlogPath, oldBacklog, 0o644)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(excludedPath, oldExcluded, 0o644)
+	}
+
+	// 4. staged, the readable table too
 	err = r.stage(p, lineID, "cve-backlog.json", rawBacklog)
 	if err != nil {
 		return err
@@ -233,7 +250,35 @@ func (r *Reconciler) stageBacklog(p *pass, lineID string, header scan.Header, ex
 	if err != nil {
 		return err
 	}
-	return r.stage(p, lineID, "cve-backlog.md", []byte(table(p.book)))
+	return r.stage(p, lineID, "cve-backlog.md", rawTable)
+}
+
+// sameButForGenerated compares two backlog files ignoring their generated stamp.
+func sameButForGenerated(a, b []byte) bool {
+	var ra, rb map[string]any
+	if json.Unmarshal(a, &ra) != nil || json.Unmarshal(b, &rb) != nil {
+		return false
+	}
+	delete(ra, "generated")
+	delete(rb, "generated")
+	ja, _ := json.Marshal(ra)
+	jb, _ := json.Marshal(rb)
+	return string(ja) == string(jb)
+}
+
+// sameTableButForGenerated compares two readable tables ignoring the line that carries the stamp.
+func sameTableButForGenerated(a, b []byte) bool {
+	strip := func(raw []byte) string {
+		var kept []string
+		for _, line := range strings.Split(string(raw), "\n") {
+			if strings.HasPrefix(line, "Generated ") {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		return strings.Join(kept, "\n")
+	}
+	return len(a) > 0 && strip(a) == strip(b)
 }
 
 // replaceEntries puts a line's entries as the status computation left them back
