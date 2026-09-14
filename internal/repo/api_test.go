@@ -251,3 +251,13 @@ func TestAPIError(t *testing.T) {
 		t.Fatal("a 405 went unnoticed")
 	}
 }
+
+// A refreshed pass moves the line manager's own branch with force, main never.
+func TestOwnBranchIsForced(t *testing.T) {
+	if !ownBranch("line-manager/pass") || !ownBranch("line-manager/dev-1.0.x") {
+		t.Fatal("the line manager's branches must be its own")
+	}
+	if ownBranch("main") || ownBranch("feature/x") {
+		t.Fatal("main and other branches are never forced")
+	}
+}

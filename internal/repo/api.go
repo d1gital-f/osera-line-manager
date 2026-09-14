@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -111,8 +112,10 @@ func (c *Client) Commit(ctx context.Context, owner, repo, branch string, parent 
 	err = c.call(ctx, http.MethodGet, base+"/git/ref/heads/"+branch, nil, &existing)
 	if err == nil {
 		err = c.call(ctx, http.MethodPatch, base+"/git/refs/heads/"+branch, map[string]any{
-			"sha":   commit.SHA,
-			"force": false,
+			"sha": commit.SHA,
+			// the line manager's own branch: a refreshed pass sits on today's main, not on
+			// the branch's old tip, so the move is never a fast forward; main is never forced
+			"force": ownBranch(branch),
 		}, nil)
 		if err != nil {
 			return CommitRef{}, fmt.Errorf("moving %s: %w", branch, err)
@@ -343,4 +346,9 @@ func (c *Client) call(ctx context.Context, method, path string, body any, out an
 		return nil
 	}
 	return json.Unmarshal(answer, out)
+}
+
+// ownBranch says whether a branch is the line manager's own scratch branch, which it may move freely.
+func ownBranch(branch string) bool {
+	return strings.HasPrefix(branch, "line-manager/")
 }
