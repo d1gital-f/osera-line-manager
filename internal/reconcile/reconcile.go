@@ -2,9 +2,9 @@
 // Built by ControlPlane for the FINOS OSERA Exchange.
 // SPDX-License-Identifier: Apache-2.0
 
-// Package reconcile is the loop: read the backlog at its latest tag, the ledger,
-// the issues and the advisories, compute one record per line, write it. Every
-// pass starts from nothing and is safe to repeat.
+// Package reconcile is the loop: read the backlog at its latest tag, the ledger
+// and the board, compute one record per line, write it. Every pass starts from
+// nothing and is safe to repeat. The scan and the graph are wired in later.
 package reconcile
 
 import (
@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/d1gital-f/osera-line-manager/internal/advisories"
 	"github.com/d1gital-f/osera-line-manager/internal/board"
 	"github.com/d1gital-f/osera-line-manager/internal/book"
 	"github.com/d1gital-f/osera-line-manager/internal/ledger"
@@ -31,7 +30,8 @@ type Config struct {
 	LedgerPath  string
 	OutDir      string
 	GitHubToken string
-	QueryOSV    bool
+	// Scan says whether the advisory sources are read; not wired yet, the scan package is.
+	Scan bool
 	// QueryBoard reads the organisation board, BoardNumber is the project number.
 	QueryBoard  bool
 	BoardNumber int
@@ -108,20 +108,6 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 	var records []status.Record
 	for _, ln := range lines {
 		var adv []status.Advisory
-		if cfg.QueryOSV {
-			osv := advisories.New()
-			adv, err = osv.Known(ctx, b.ForLine(ln.ID))
-			if err != nil {
-				return nil, err
-			}
-			// resolve the ids the book does not know, then compare by CVE again
-			adv = notInBook(adv, b.ForLine(ln.ID))
-			adv, err = osv.Resolve(ctx, adv, filepath.Join(cfg.OutDir, "osv-cache.json"))
-			if err != nil {
-				return nil, err
-			}
-			adv = notInBook(adv, b.ForLine(ln.ID))
-		}
 		rec := status.Compute(status.Inputs{
 			Line:              ln.ID,
 			BookVersion:       tag,
@@ -193,21 +179,6 @@ func parse(rawBook, rawLines []byte) (*book.Book, []book.Line, error) {
 		return nil, nil, err
 	}
 	return b, lines, nil
-}
-
-// notInBook keeps the advisories whose CVE is not an entry of the line.
-func notInBook(advs []status.Advisory, entries []book.Entry) []status.Advisory {
-	known := map[string]bool{}
-	for _, e := range entries {
-		known[e.CVE] = true
-	}
-	var out []status.Advisory
-	for _, a := range advs {
-		if !known[a.CVE] {
-			out = append(out, a)
-		}
-	}
-	return out
 }
 
 func shortCommit(c string) string {

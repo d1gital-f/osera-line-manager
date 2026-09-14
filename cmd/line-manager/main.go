@@ -82,7 +82,7 @@ func runCommand(args []string) {
 	ledgerPath := fs.String("ledger", "", "a ledger export, empty for none")
 	outDir := fs.String("out", "/data/status", "where the status records are written")
 	interval := fs.Duration("interval", 10*time.Minute, "time between passes")
-	queryOSV := fs.Bool("osv", true, "ask OSV for advisories the book does not carry")
+	scan := fs.Bool("scan", true, "read the advisory sources for the line's graph")
 	queryBoard := fs.Bool("board", true, "read the organisation board to see where each CVE's issue lives")
 	boardNumber := fs.Int("board-number", 1, "the organisation project number of the board")
 	once := fs.Bool("once", false, "one pass, then exit")
@@ -97,7 +97,7 @@ func runCommand(args []string) {
 		LedgerPath:   *ledgerPath,
 		OutDir:       *outDir,
 		GitHubToken:  os.Getenv("GITHUB_TOKEN"),
-		QueryOSV:     *queryOSV,
+		Scan:         *scan,
 		QueryBoard:   *queryBoard,
 		BoardNumber:  *boardNumber,
 		LocalDir:     *local,

@@ -33,6 +33,10 @@ A plain Go service in the shape of a controller: one reconcile function per line
 | Path | What |
 |---|---|
 | `cmd/line-manager` | the command |
-| `internal/book` | reads `cve-backlog.json` (entry schema 0.5.0) and `supported-lines.csv` |
+| `internal/book` | reads `cve-backlog.json` (entry schema 0.6.0) and `supported-lines.csv` (fifteen columns) |
 | `internal/ledger` | reads the ledger export: promoted, retracted, not-remediable events |
 | `internal/status` | the computation and its tests |
+| `internal/releases` | the release repository: what the gate promoted, the evidence file next to the jar, the signed Nexus webhook |
+| `internal/board` | the organisation board: where each CVE's issue lives, the not remediable label |
+| `internal/rules` | the prioritisation rules read from `rules/prioritisation.yaml` as data |
+| `internal/scan` | the advisory sources (OSV, CISA KEV, FIRST EPSS, NVD) through a disk cache, the dev only advisory file, the rules applied, `cve-backlog.json` and `cve-excluded.json` written |
