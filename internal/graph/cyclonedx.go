@@ -22,6 +22,9 @@ import (
 // LineProperty is the name of the property carrying the line id.
 const LineProperty = "osera:line"
 
+// MethodProperty is the name of the property saying how the graph was built.
+const MethodProperty = "osera:method"
+
 // Version of the line manager, set by the caller for the tools block.
 var ToolVersion = "dev"
 
@@ -74,7 +77,7 @@ func Write(path string, g *Graph, now time.Time) error {
 
 	// 2. the anchor, with the line id
 	anchor := Component{Group: g.Anchor.Group, Artifact: g.Anchor.Artifact, Version: g.Anchor.Version, Type: "pom"}
-	f.Metadata.Component = cdxComponent{Type: "library", BOMRef: anchor.PURL(), Group: anchor.Group, Name: anchor.Artifact, Version: anchor.Version, PURL: anchor.PURL(), Properties: []cdxProperty{{Name: LineProperty, Value: g.LineID}, {Name: RootsProperty, Value: g.RootsRule}}}
+	f.Metadata.Component = cdxComponent{Type: "library", BOMRef: anchor.PURL(), Group: anchor.Group, Name: anchor.Artifact, Version: anchor.Version, PURL: anchor.PURL(), Properties: []cdxProperty{{Name: LineProperty, Value: g.LineID}, {Name: RootsProperty, Value: g.RootsRule}, {Name: ComponentsProperty, Value: g.Declared}, {Name: PinsProperty, Value: pinsString(g.Pins)}, {Name: MethodProperty, Value: g.Method}}}
 
 	// 3. the components and the edges, the anchor depending on the roots
 	refs := map[string]string{}
@@ -135,6 +138,15 @@ func Read(path string) (*Graph, error) {
 		}
 		if p.Name == RootsProperty {
 			g.RootsRule = p.Value
+		}
+		if p.Name == ComponentsProperty {
+			g.Declared = p.Value
+		}
+		if p.Name == PinsProperty {
+			g.Pins = parsePins(p.Value)
+		}
+		if p.Name == MethodProperty {
+			g.Method = p.Value
 		}
 	}
 

@@ -27,6 +27,111 @@ type Rule struct {
 // RootsProperty is the name of the metadata property recording the rule a graph was built with.
 const RootsProperty = "osera:roots"
 
+// PinsProperty is the name of the metadata property recording the version pins the
+// declared components imposed on their groups.
+const PinsProperty = "osera:pins"
+
+// ComponentsProperty is the name of the metadata property recording the declared
+// components a graph was built for, so a changed component version rebuilds it.
+const ComponentsProperty = "osera:components"
+
+// Pin is a version override a declared component imposes on its whole group: every
+// managed artifact of Group at version From is taken at version To instead. The Wave 1
+// line declares spring-core 5.3.39 while Boot 2.7.18 manages 5.3.31, so the whole
+// Spring Framework moves to 5.3.39, the way a bank's build sets it.
+type Pin struct {
+	Group string
+	From  string
+	To    string
+}
+
+// String is group:from>to.
+func (p Pin) String() string {
+	return p.Group + ":" + p.From + ">" + p.To
+}
+
+// pinsFor derives the pins from the managed list: one per declared component the anchor
+// manages at another version, once per group and version pair.
+func pinsFor(managed []Component, rule Rule) []Pin {
+	// 1. the managed version of every artifact
+	managedVersion := map[string]string{}
+	for _, c := range managed {
+		managedVersion[c.Group+":"+c.Artifact] = c.Version
+	}
+
+	// 2. a declared component managed at another version pins its group
+	var pins []Pin
+	seen := map[string]bool{}
+	for _, c := range rule.Components {
+		from, found := managedVersion[c.Group+":"+c.Artifact]
+		if !found || from == c.Version {
+			continue
+		}
+		pin := Pin{Group: c.Group, From: from, To: c.Version}
+		if seen[pin.String()] {
+			continue
+		}
+		seen[pin.String()] = true
+		pins = append(pins, pin)
+	}
+	return pins
+}
+
+// applyPins returns the managed list with every artifact of a pinned group at the pinned
+// version, the rest untouched.
+func applyPins(managed []Component, pins []Pin) []Component {
+	out := make([]Component, 0, len(managed))
+	for _, c := range managed {
+		for _, pin := range pins {
+			if c.Group == pin.Group && c.Version == pin.From {
+				c.Version = pin.To
+			}
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// pinsString is what the graph file records, comma separated.
+func pinsString(pins []Pin) string {
+	var parts []string
+	for _, p := range pins {
+		parts = append(parts, p.String())
+	}
+	return strings.Join(parts, ",")
+}
+
+// parsePins reads pinsString back.
+func parsePins(s string) []Pin {
+	var pins []Pin
+	for _, part := range strings.Split(s, ",") {
+		if part == "" {
+			continue
+		}
+		i := strings.LastIndex(part, ":")
+		j := strings.LastIndex(part, ">")
+		if i < 0 || j < i {
+			continue
+		}
+		pins = append(pins, Pin{Group: part[:i], From: part[i+1 : j], To: part[j+1:]})
+	}
+	return pins
+}
+
+// Declared is the declared components as the graph file records them.
+func Declared(rule Rule) string {
+	return componentsString(rule)
+}
+
+// componentsString is the declared components as the graph file records them.
+func componentsString(rule Rule) string {
+	var parts []string
+	for _, c := range rule.Components {
+		parts = append(parts, c.String())
+	}
+	return strings.Join(parts, " ")
+}
+
 // RuleFor derives the rule from the anchor and the line's declared components.
 func RuleFor(anchor book.Anchor, components []string) Rule {
 	// 1. the groups: the anchor's and every component's, once each

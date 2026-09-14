@@ -103,8 +103,18 @@ func (r *Resolver) fetchPOM(ctx context.Context, group, artifact, version string
 	return nil, last
 }
 
-// readModel reads a POM and its parents, resolves the properties, and returns the model.
+// readModel reads a POM and its parents, resolves the properties, follows the BOMs
+// the chain imports, and returns the model.
 func (r *Resolver) readModel(ctx context.Context, group, artifact, version string) (*model, error) {
+	return r.readModelDepth(ctx, group, artifact, version, 0)
+}
+
+// importDepth bounds how far imported BOMs are followed: Boot imports the Framework
+// BOM, which imports nothing, so two levels cover the lines; four is a safe ceiling.
+const importDepth = 4
+
+// readModelDepth is readModel with the import depth counted.
+func (r *Resolver) readModelDepth(ctx context.Context, group, artifact, version string, depth int) (*model, error) {
 	// 1. the chain, child first
 	var chain []pom
 	g, a, v := group, artifact, version
@@ -140,20 +150,45 @@ func (r *Resolver) readModel(ctx context.Context, group, artifact, version strin
 	props["pom.version"] = m.Version
 	props["pom.groupId"] = m.Group
 
-	// 3. what the chain manages, parents first so the child wins, imports left out
+	// 3. what the chain manages, parents first so the child wins; the imports noted, child first
 	managed := map[string]Component{}
 	var order []string
+	var imports []Component
 	for i := len(chain) - 1; i >= 0; i-- {
 		for _, d := range chain[i].DependencyManagement.Dependencies {
+			c := Component{Group: subst(d.GroupID, props), Artifact: subst(d.ArtifactID, props), Version: subst(d.Version, props), Classifier: d.Classifier, Type: firstOf(d.Type, "jar")}
 			if d.Scope == "import" {
+				imports = append([]Component{c}, imports...)
 				continue
 			}
-			c := Component{Group: subst(d.GroupID, props), Artifact: subst(d.ArtifactID, props), Version: subst(d.Version, props), Classifier: d.Classifier, Type: firstOf(d.Type, "jar")}
 			key := c.Group + ":" + c.Artifact + ":" + c.Classifier + ":" + c.Type
 			if _, seen := managed[key]; !seen {
 				order = append(order, key)
 			}
 			managed[key] = c
+		}
+	}
+
+	// 3b. what the imported BOMs manage, the chain's own entries winning, the first import
+	//     winning over a later one, the way Maven merges them; Boot imports the Framework
+	//     and Security BOMs this way, so spring-core is managed through an import
+	if depth < importDepth {
+		for _, imp := range imports {
+			if imp.Version == "" || strings.Contains(imp.Version, "${") {
+				continue
+			}
+			bom, err := r.readModelDepth(ctx, imp.Group, imp.Artifact, imp.Version, depth+1)
+			if err != nil {
+				continue
+			}
+			for _, c := range bom.Managed {
+				key := c.Group + ":" + c.Artifact + ":" + c.Classifier + ":" + c.Type
+				if _, seen := managed[key]; seen {
+					continue
+				}
+				order = append(order, key)
+				managed[key] = c
+			}
 		}
 	}
 	for _, key := range order {

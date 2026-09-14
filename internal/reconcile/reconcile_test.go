@@ -95,7 +95,7 @@ func writeGraph(t *testing.T, dir string, ln book.Line, anchor book.Anchor) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	g := &graph.Graph{LineID: ln.ID, Anchor: anchor, RootsRule: graph.RuleFor(anchor, ln.Components).String(), Components: []graph.Component{{Group: "org.example", Artifact: "a", Version: "1.0"}}, Dependencies: map[string][]string{}}
+	g := &graph.Graph{LineID: ln.ID, Anchor: anchor, RootsRule: graph.RuleFor(anchor, ln.Components).String(), Declared: graph.Declared(graph.RuleFor(anchor, ln.Components)), Method: "one build", Components: []graph.Component{{Group: "org.example", Artifact: "a", Version: "1.0"}}, Dependencies: map[string][]string{}}
 	if err := graph.Write(path, g, time.Now()); err != nil {
 		t.Fatal(err)
 	}

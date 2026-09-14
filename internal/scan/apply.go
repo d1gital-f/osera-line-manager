@@ -60,6 +60,9 @@ type Excluded struct {
 type Split struct {
 	Entries  []book.Entry
 	Excluded []Excluded
+	// Duplicates says which findings were folded because another finding carried the
+	// same CVE on the same library at another version, in words, for the log.
+	Duplicates []string
 }
 
 // Apply puts the rules on every finding of one line. A finding is an entry
@@ -68,6 +71,7 @@ type Split struct {
 // every component: the graph is the line's runtime closure.
 func Apply(lineID string, findings []Finding, r *rules.Rules) Split {
 	var out Split
+	findings, out.Duplicates = onePerLibrary(findings)
 	for _, f := range findings {
 		// 1. the facts and the rules' word
 		onList := r.CuratedList(f.Component.Group)
@@ -126,6 +130,32 @@ func Apply(lineID string, findings []Finding, r *rules.Rules) Split {
 	sortEntries(out.Entries)
 	sortExcluded(out.Excluded)
 	return out
+}
+
+// onePerLibrary keeps one finding per CVE and library: a mediated graph carries one
+// version of a library, so two findings that differ only by version mean two versions
+// of the same library met, and the higher one is kept, the other named in words.
+func onePerLibrary(findings []Finding) ([]Finding, []string) {
+	// 1. the first finding per CVE and library, the higher version winning
+	index := map[string]int{}
+	var kept []Finding
+	var folded []string
+	for _, f := range findings {
+		key := f.CVE + " " + f.Component.Name()
+		i, seen := index[key]
+		if !seen {
+			index[key] = len(kept)
+			kept = append(kept, f)
+			continue
+		}
+		if compareVersions(f.Component.Version, kept[i].Component.Version) > 0 {
+			folded = append(folded, f.CVE+" on "+kept[i].Component.String()+" folded onto "+f.Component.String())
+			kept[i] = f
+			continue
+		}
+		folded = append(folded, f.CVE+" on "+f.Component.String()+" folded onto "+kept[i].Component.String())
+	}
+	return kept, folded
 }
 
 // whyOf writes the rule that put the CVE in, then the signals behind the priority.

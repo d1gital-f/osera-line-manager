@@ -4,11 +4,14 @@
 
 // Package graph turns a line's anchor into its dependency graph and keeps it as
 // a CycloneDX file. The resolve runs Maven as a subprocess inside the process,
-// no Kubernetes Job, no shared volume (Francesco, 14 Sept 2026): every artifact
-// the anchor manages is a root, each root is resolved as the single dependency
-// of a throwaway POM with the anchor imported, breadth first until nothing new
-// appears, compile and runtime scopes only, one fresh directory per probe. The
-// method is the one that built the 725 row Wave 1 graph.
+// no Kubernetes Job, no shared volume (Francesco, 14 Sept 2026). The line is
+// built the way a bank builds it: one throwaway project whose dependencies are
+// the roots (the anchor's managed artifacts in the line's groups, the declared
+// components pinning their groups' versions) with the anchor imported, one
+// Maven run, and the resolved tree is the graph, one version of every library
+// because Maven has mediated. When that build fails the older method takes
+// over: every root probed alone in batches, breadth first until nothing new
+// appears, compile and runtime scopes only.
 package graph
 
 import (
@@ -71,6 +74,12 @@ type Graph struct {
 	Roots []string
 	// RootsRule is the rule the roots were chosen with, as Rule.String writes it.
 	RootsRule string
+	// Declared is the declared components the graph was built for, as componentsString writes them.
+	Declared string
+	// Pins are the version overrides the declared components imposed on their groups.
+	Pins []Pin
+	// Method says how the graph was built: one build, or the batched probes when the build failed, and why.
+	Method string
 	// Dependencies maps a component key to the keys it depends on, direct only.
 	Dependencies map[string][]string
 	// Unresolved maps a key to why Maven could not resolve it; its edges were read from its POM instead.

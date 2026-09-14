@@ -51,8 +51,12 @@ func needsGraph(dir string, ln book.Line) (bool, error) {
 		return true, nil
 	}
 
-	// 5. the roots rule the line gives today; a graph built with another one is rebuilt
-	if g.RootsRule != graph.RuleFor(anchor, ln.Components).String() {
+	// 5. the roots rule and the declared components the line gives today; a graph built with others is rebuilt
+	rule := graph.RuleFor(anchor, ln.Components)
+	if g.RootsRule != rule.String() {
+		return true, nil
+	}
+	if g.Declared != graph.Declared(rule) {
 		return true, nil
 	}
 	return false, nil
@@ -109,7 +113,14 @@ func (r *Reconciler) ensureGraph(ctx context.Context, p *pass, ln book.Line) err
 	if err != nil {
 		return err
 	}
-	logf("line %s: graph built, %d components", ln.ID, len(g.Components))
+	if len(g.Pins) > 0 {
+		var pins []string
+		for _, pin := range g.Pins {
+			pins = append(pins, pin.String())
+		}
+		logf("line %s: the declared components pin %s", ln.ID, strings.Join(pins, ", "))
+	}
+	logf("line %s: graph built by %s, %d components, %d roots, %d unresolved", ln.ID, g.Method, len(g.Components), len(g.Roots), len(g.Unresolved))
 	return r.stage(p, ln.ID, graphPath(ln.ID), raw)
 }
 

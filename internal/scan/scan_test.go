@@ -410,3 +410,22 @@ func TestWindowWithoutSignal(t *testing.T) {
 		t.Fatalf("entries %d excluded %+v", len(out.Entries), out.Excluded)
 	}
 }
+
+// Two findings of one CVE on one library at two versions fold onto the higher version,
+// named in words; findings on other libraries or other CVEs are untouched.
+func TestOnePerLibrary(t *testing.T) {
+	seven := 7.0
+	f := []Finding{
+		{CVE: "CVE-1", Component: Component{Group: "org.springframework", Artifact: "spring-core", Version: "5.3.31"}, Score: &seven},
+		{CVE: "CVE-1", Component: Component{Group: "org.springframework", Artifact: "spring-core", Version: "5.3.39"}, Score: &seven},
+		{CVE: "CVE-2", Component: Component{Group: "org.springframework", Artifact: "spring-core", Version: "5.3.39"}, Score: &seven},
+		{CVE: "CVE-1", Component: Component{Group: "org.yaml", Artifact: "snakeyaml", Version: "1.33"}, Score: &seven},
+	}
+	kept, folded := onePerLibrary(f)
+	if len(kept) != 3 || kept[0].Component.Version != "5.3.39" || kept[1].CVE != "CVE-2" || kept[2].Component.Artifact != "snakeyaml" {
+		t.Fatalf("kept %v", kept)
+	}
+	if len(folded) != 1 || folded[0] != "CVE-1 on org.springframework:spring-core@5.3.31 folded onto org.springframework:spring-core@5.3.39" {
+		t.Fatalf("folded %v", folded)
+	}
+}

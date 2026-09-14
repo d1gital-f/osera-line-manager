@@ -123,18 +123,22 @@ func (r *Resolver) workers() int {
 	return r.Workers
 }
 
-// Resolve builds the graph of a line from its anchor. workDir holds one fresh
-// directory per probe, removed when the probe is done.
+// Resolve builds the graph of a line from its anchor. workDir holds the throwaway
+// project of the build, and one fresh directory per probe when the fallback runs.
 func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Anchor, rule Rule, workDir string) (*Graph, error) {
 	// 1. the anchor's model: a BOM manages the roots, the rule picks them, a jar is the single root
 	m, err := r.readModel(ctx, anchor.Group, anchor.Artifact, anchor.Version)
 	if err != nil {
 		return nil, errorf("anchor %s: %w", anchor, err)
 	}
-	g := &Graph{LineID: lineID, Anchor: anchor, RootsRule: rule.String(), Dependencies: map[string][]string{}, Unresolved: map[string]string{}}
+	g := &Graph{LineID: lineID, Anchor: anchor, RootsRule: rule.String(), Declared: componentsString(rule), Dependencies: map[string][]string{}, Unresolved: map[string]string{}}
+	importBOM := m.Packaging == "pom"
 	var roots []Component
-	if m.Packaging == "pom" {
-		roots, err = r.roots(ctx, selectRoots(m.Managed, rule))
+	var managed []Component
+	if importBOM {
+		g.Pins = pinsFor(m.Managed, rule)
+		managed = applyPins(m.Managed, g.Pins)
+		roots, err = r.roots(ctx, selectRoots(managed, rule))
 		if err != nil {
 			return nil, err
 		}
@@ -144,13 +148,229 @@ func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Ancho
 	if len(roots) == 0 {
 		return nil, errorf("anchor %s manages nothing that is not a pom", anchor)
 	}
-
-	// 2. breadth first: every root probed, its children queued, until nothing new appears
 	err = os.MkdirAll(workDir, 0o755)
 	if err != nil {
 		return nil, errorf("work directory: %w", err)
 	}
-	importBOM := m.Packaging == "pom"
+
+	// 2. one build for the whole line, the way a bank builds it: Maven mediates, one version each
+	tree, why := r.buildLine(ctx, workDir, anchor, importBOM, managed, g.Pins, roots)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if why == "" {
+		g.Method = "one build"
+		graphFromTree(g, tree)
+		g.sortAll()
+		return g, nil
+	}
+
+	// 3. the fallback: every root probed alone, breadth first
+	g.Method = "batched probes, the single build failed: " + why
+	err = r.resolveByProbes(ctx, g, workDir, anchor, importBOM, roots)
+	if err != nil {
+		return nil, err
+	}
+	g.sortAll()
+	return g, nil
+}
+
+// buildLine writes the line's project and runs dependency:tree on it once. The
+// tree is returned on success; otherwise the reason it failed.
+func (r *Resolver) buildLine(ctx context.Context, workDir string, anchor book.Anchor, importBOM bool, managed []Component, pins []Pin, roots []Component) (treeNode, string) {
+	// 1. a fresh directory with the project
+	dir, err := os.MkdirTemp(workDir, "line-")
+	if err != nil {
+		return treeNode{}, err.Error()
+	}
+	defer os.RemoveAll(dir)
+	err = os.WriteFile(filepath.Join(dir, "pom.xml"), []byte(r.linePOM(anchor, importBOM, managed, pins, roots)), 0o644)
+	if err != nil {
+		return treeNode{}, err.Error()
+	}
+
+	// 2. Maven, twice at most
+	out := filepath.Join(dir, "tree.json")
+	var mvnErr string
+	for attempt := 0; attempt < 2; attempt++ {
+		mvnErr = r.runMaven(ctx, dir, out, false)
+		if mvnErr == "" {
+			break
+		}
+		if ctx.Err() != nil {
+			return treeNode{}, ctx.Err().Error()
+		}
+	}
+	if mvnErr != "" {
+		return treeNode{}, mvnErr
+	}
+
+	// 3. the tree
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		return treeNode{}, err.Error()
+	}
+	var root treeNode
+	err = json.Unmarshal(raw, &root)
+	if err != nil {
+		return treeNode{}, "tree: " + err.Error()
+	}
+	if len(root.Children) == 0 {
+		return treeNode{}, "tree: the build resolved nothing"
+	}
+	return root, ""
+}
+
+// linePOM is the line's throwaway project: the pinned artifacts managed first, so an
+// explicit entry wins over the imported anchor, then the anchor imported when it is a
+// BOM, and every root as a dependency.
+func (r *Resolver) linePOM(anchor book.Anchor, importBOM bool, managed []Component, pins []Pin, roots []Component) string {
+	var b strings.Builder
+	b.WriteString(`<project xmlns="http://maven.apache.org/POM/4.0.0">` + "\n")
+	b.WriteString("<modelVersion>4.0.0</modelVersion>\n")
+	b.WriteString("<groupId>osera.line</groupId><artifactId>line</artifactId><version>1</version>\n")
+	repos := r.repositories()
+	if len(repos) > 1 || repos[0] != Central {
+		b.WriteString("<repositories>\n")
+		for i, u := range repos {
+			fmt.Fprintf(&b, "<repository><id>osera-%d</id><url>%s</url></repository>\n", i, u)
+		}
+		b.WriteString("</repositories>\n")
+	}
+	if importBOM {
+		b.WriteString("<dependencyManagement><dependencies>\n")
+		for _, c := range pinnedArtifacts(managed, pins) {
+			fmt.Fprintf(&b, "<dependency><groupId>%s</groupId><artifactId>%s</artifactId><version>%s</version>", c.Group, c.Artifact, c.Version)
+			if c.Classifier != "" {
+				fmt.Fprintf(&b, "<classifier>%s</classifier>", c.Classifier)
+			}
+			if c.Type != "" && c.Type != "jar" {
+				fmt.Fprintf(&b, "<type>%s</type>", c.Type)
+			}
+			b.WriteString("</dependency>\n")
+		}
+		b.WriteString("<dependency>")
+		fmt.Fprintf(&b, "<groupId>%s</groupId><artifactId>%s</artifactId><version>%s</version><type>pom</type><scope>import</scope>", anchor.Group, anchor.Artifact, anchor.Version)
+		b.WriteString("</dependency>\n</dependencies></dependencyManagement>\n")
+	}
+	b.WriteString("<dependencies>\n")
+	for _, c := range roots {
+		fmt.Fprintf(&b, "<dependency><groupId>%s</groupId><artifactId>%s</artifactId><version>%s</version>", c.Group, c.Artifact, c.Version)
+		if c.Classifier != "" {
+			fmt.Fprintf(&b, "<classifier>%s</classifier>", c.Classifier)
+		}
+		if c.Type != "" && c.Type != "jar" {
+			fmt.Fprintf(&b, "<type>%s</type>", c.Type)
+		}
+		b.WriteString("</dependency>\n")
+	}
+	b.WriteString("</dependencies>\n</project>\n")
+	return b.String()
+}
+
+// pinnedArtifacts is every managed artifact of a pinned group, at the pinned version.
+func pinnedArtifacts(managed []Component, pins []Pin) []Component {
+	var out []Component
+	for _, c := range managed {
+		for _, pin := range pins {
+			if c.Group == pin.Group && c.Version == pin.To {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// graphFromTree fills the graph from the build's tree: every node a component,
+// once per group, artifact and classifier (Maven has mediated, one version each),
+// the edges the tree's parent to child links in compile and runtime scope, not
+// optional, and the roots the project's direct dependencies.
+func graphFromTree(g *Graph, root treeNode) {
+	// 1. the roots
+	nodes := map[string]Component{}
+	byGA := map[string]string{}
+	var walk func(parent treeNode)
+	for _, ch := range childrenOf(root) {
+		key := placeNode(ch, nodes, byGA)
+		g.Roots = append(g.Roots, key)
+	}
+
+	// 2. every node's children, depth first, an edge per child
+	walk = func(parent treeNode) {
+		parentKey := byGA[gaKey(Component{Group: parent.GroupID, Artifact: parent.ArtifactID, Classifier: parent.Classifier, Type: firstOf(parent.Type, "jar")})]
+		var edges []string
+		for _, ch := range parent.Children {
+			scope := firstOf(ch.Scope, "compile")
+			if scope != "compile" && scope != "runtime" {
+				continue
+			}
+			if bool(ch.Optional) {
+				continue
+			}
+			c := Component{Group: ch.GroupID, Artifact: ch.ArtifactID, Version: ch.Version, Classifier: ch.Classifier, Type: firstOf(ch.Type, "jar")}
+			key := placeNode(c, nodes, byGA)
+			edges = append(edges, key)
+			walk(ch)
+		}
+		if parentKey != "" {
+			g.Dependencies[parentKey] = mergeEdges(g.Dependencies[parentKey], edges)
+		}
+	}
+	for _, ch := range root.Children {
+		walk(ch)
+	}
+
+	// 3. the components
+	for _, c := range nodes {
+		g.Components = append(g.Components, c)
+	}
+}
+
+// placeNode records a component once per group, artifact and classifier and returns its key;
+// a second version of the same library, which a mediated tree should never carry, is
+// folded onto the first one seen.
+func placeNode(c Component, nodes map[string]Component, byGA map[string]string) string {
+	ga := gaKey(c)
+	if key, seen := byGA[ga]; seen {
+		return key
+	}
+	nodes[c.Key()] = c
+	byGA[ga] = c.Key()
+	return c.Key()
+}
+
+// gaKey is group:artifact with the classifier and a non jar type, without the version.
+func gaKey(c Component) string {
+	k := c.Group + ":" + c.Artifact
+	if c.Classifier != "" {
+		k += ":" + c.Classifier
+	}
+	if c.Type != "" && c.Type != "jar" {
+		k += ":" + c.Type
+	}
+	return k
+}
+
+// mergeEdges adds the new edges to the known ones, each once.
+func mergeEdges(known, more []string) []string {
+	seen := map[string]bool{}
+	for _, k := range known {
+		seen[k] = true
+	}
+	for _, k := range more {
+		if !seen[k] {
+			seen[k] = true
+			known = append(known, k)
+		}
+	}
+	return known
+}
+
+// resolveByProbes is the fallback: every root probed alone, its children queued,
+// breadth first until nothing new appears, batches of roots per Maven run.
+func (r *Resolver) resolveByProbes(ctx context.Context, g *Graph, workDir string, anchor book.Anchor, importBOM bool, roots []Component) error {
+	// 1. the queue
 	nodes := map[string]Component{}
 	var queue []Component
 	for _, c := range roots {
@@ -165,12 +385,14 @@ func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Ancho
 	if r.Progress != nil {
 		r.Progress(0, len(nodes), 0)
 	}
+
+	// 2. breadth first
 	for depth := 0; len(queue) > 0; depth++ {
 		batch := queue
 		queue = nil
 		results, err := r.probeAll(ctx, workDir, anchor, importBOM, batch)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		done += len(batch)
 		if r.Progress != nil {
@@ -193,12 +415,11 @@ func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Ancho
 		}
 	}
 
-	// 3. the components, sorted
+	// 3. the components
 	for _, c := range nodes {
 		g.Components = append(g.Components, c)
 	}
-	g.sortAll()
-	return g, nil
+	return nil
 }
 
 // roots keeps the managed artifacts whose packaging is not pom, read with the worker pool.

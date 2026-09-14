@@ -79,6 +79,9 @@ func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error 
 		return fmt.Errorf("line %s: %w", ln.ID, err)
 	}
 	split := scan.Apply(ln.ID, findings, p.rules)
+	for _, d := range split.Duplicates {
+		logf("line %s: %s", ln.ID, d)
+	}
 	logf("line %s: %d findings, %d applicable, %d excluded", ln.ID, len(findings), len(split.Entries), len(split.Excluded))
 
 	// 4. merged into the backlog, the file's memory kept
