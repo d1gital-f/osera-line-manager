@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/d1gital-f/osera-line-manager/internal/book"
-	"github.com/d1gital-f/osera-line-manager/internal/ledger"
 	"github.com/d1gital-f/osera-line-manager/internal/reconcile"
 	"github.com/d1gital-f/osera-line-manager/internal/status"
 )
@@ -49,7 +48,6 @@ func statusCommand(args []string) {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	bookPath := fs.String("book", "cve-backlog.json", "the order book")
 	linesPath := fs.String("lines", "supported-lines.csv", "the supported lines")
-	ledgerPath := fs.String("ledger", "", "a ledger export, empty for none")
 	bookVersion := fs.String("book-version", "", "the tag the book was published under")
 	fail(fs.Parse(args))
 
@@ -57,16 +55,11 @@ func statusCommand(args []string) {
 	fail(err)
 	lines, err := book.ReadLines(*linesPath)
 	fail(err)
-	l := ledger.Empty()
-	if *ledgerPath != "" {
-		l, err = ledger.Read(*ledgerPath)
-		fail(err)
-	}
 	asOf := time.Now().UTC().Format(time.RFC3339)
 	var records []status.Record
 	for _, ln := range lines {
 		records = append(records, status.Compute(status.Inputs{
-			Line: ln.ID, BookVersion: *bookVersion, AsOf: asOf, Book: b, Ledger: l, BacklogRepository: "backlog",
+			Line: ln, BookVersion: *bookVersion, AsOf: asOf, Book: b, BacklogRepository: "backlog", Consume: ln.Consume,
 		}))
 	}
 	out, err := json.MarshalIndent(records, "", "  ")
@@ -79,7 +72,6 @@ func runCommand(args []string) {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	owner := fs.String("owner", "finos-osera", "the organisation or account that holds the backlog repository")
 	repo := fs.String("backlog-repo", "backlog", "the backlog repository")
-	ledgerPath := fs.String("ledger", "", "a ledger export, empty for none")
 	outDir := fs.String("out", "/data/status", "where the status records are written")
 	interval := fs.Duration("interval", 10*time.Minute, "time between passes")
 	scan := fs.Bool("scan", true, "read the advisory sources for the line's graph")
@@ -94,7 +86,6 @@ func runCommand(args []string) {
 	cfg := reconcile.Config{
 		Owner:        *owner,
 		BacklogRepo:  *repo,
-		LedgerPath:   *ledgerPath,
 		OutDir:       *outDir,
 		GitHubToken:  os.Getenv("GITHUB_TOKEN"),
 		Scan:         *scan,

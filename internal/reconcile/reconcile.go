@@ -18,7 +18,6 @@ import (
 
 	"github.com/d1gital-f/osera-line-manager/internal/board"
 	"github.com/d1gital-f/osera-line-manager/internal/book"
-	"github.com/d1gital-f/osera-line-manager/internal/ledger"
 	"github.com/d1gital-f/osera-line-manager/internal/status"
 )
 
@@ -26,7 +25,6 @@ import (
 type Config struct {
 	Owner       string
 	BacklogRepo string
-	LedgerPath  string
 	OutDir      string
 	GitHubToken string
 	// Scan says whether the advisory sources are read; not wired yet, the scan package is.
@@ -67,15 +65,6 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 		return nil, fmt.Errorf("a local directory is required until the clone is wired in (--local)")
 	}
 
-	// 2. the ledger, a file until the gate writes one
-	l := ledger.Empty()
-	if cfg.LedgerPath != "" {
-		l, err = ledger.Read(cfg.LedgerPath)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// 3. the issues, from the board, one paged query
 	var is []status.Issue
 	if cfg.QueryBoard {
@@ -90,18 +79,14 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 	asOf := time.Now().UTC().Format(time.RFC3339)
 	var records []status.Record
 	for _, ln := range lines {
-		var adv []status.Advisory
 		rec := status.Compute(status.Inputs{
-			Line:              ln.ID,
+			Line:              ln,
 			BookVersion:       tag,
 			AsOf:              asOf,
 			Book:              b,
-			Ledger:            l,
 			Issues:            is,
-			Advisories:        adv,
 			BacklogRepository: cfg.BacklogRepo,
 			Consume:           ln.Consume,
-			SeveritySource:    "NVD CVSS 3.1 base score as recorded at NVD; GitHub's advisory word (CRITICAL 9, HIGH 7, MODERATE 4, LOW 0.1) only where NVD has no score yet",
 		})
 		records = append(records, rec)
 
@@ -114,7 +99,7 @@ func Once(ctx context.Context, cfg Config) ([]status.Record, error) {
 		log.Printf("line %s: %s", rec.Line, rec.Status)
 		log.Printf("  book: %s (%s)", tag, shortCommit(commit))
 		log.Printf("  in scope %d, fixed %d, in progress %d, open %d, not remediable %d", rec.InScope, len(rec.Fixed), len(rec.InProgress), len(rec.Open), len(rec.NotRemediable))
-		log.Printf("  new since book %d, outside the book %d", len(rec.NewSinceBook), len(rec.OutsideBook))
+		log.Printf("  discrepancies %d", len(rec.Discrepancies))
 	}
 	// 6. the status columns of supported-lines.csv, when asked to write them
 	if cfg.LinesPath != "" {

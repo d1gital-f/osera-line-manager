@@ -215,6 +215,7 @@ func Issues(cards []Card, backlogRepository string) []status.Issue {
 		is := status.Issue{
 			CVE:           card.CVE,
 			Repository:    card.Repository,
+			Number:        card.Number,
 			State:         card.State,
 			NotRemediable: hasLabel(card.Labels, NotRemediableLabel),
 		}

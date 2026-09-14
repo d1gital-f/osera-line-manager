@@ -25,9 +25,11 @@ var line = book.Line{ID: "spring-boot-2.7.x"}
 // 1. Three fixed entries, two on the same set: one dependency per library, sorted, the POM as expected.
 func TestBuildAndWrite(t *testing.T) {
 	fixed := []status.FixedEntry{
-		{CVE: "CVE-2025-24813", Coordinates: []string{"org.apache.tomcat.embed:tomcat-embed-core@9.0.83+osera-patch.001"}},
-		{CVE: "CVE-2024-38816", Coordinates: []string{"org.springframework:spring-web@5.3.39+osera-patch.001", "org.springframework:spring-webmvc@5.3.39+osera-patch.001"}},
-		{CVE: "CVE-2024-38819", Coordinates: []string{"org.springframework:spring-web@5.3.39+osera-patch.001", "org.springframework:spring-webmvc@5.3.39+osera-patch.001"}},
+		{CVE: "CVE-2025-24813", Coordinate: "org.apache.tomcat.embed:tomcat-embed-core@9.0.83+osera-patch.001"},
+		{CVE: "CVE-2024-38816", Coordinate: "org.springframework:spring-web@5.3.39+osera-patch.001"},
+		{CVE: "CVE-2024-38816", Coordinate: "org.springframework:spring-webmvc@5.3.39+osera-patch.001"},
+		{CVE: "CVE-2024-38819", Coordinate: "org.springframework:spring-web@5.3.39+osera-patch.001"},
+		{CVE: "CVE-2024-38819", Coordinate: "org.springframework:spring-webmvc@5.3.39+osera-patch.001"},
 	}
 	b, err := Build(line, fixed, "2026.10.07")
 	if err != nil {
@@ -72,14 +74,14 @@ func TestBuildAndWrite(t *testing.T) {
 // 2. The same library at two patched versions is an error, not a choice.
 func TestBuildConflict(t *testing.T) {
 	fixed := []status.FixedEntry{
-		{CVE: "CVE-1", Coordinates: []string{"org.example:lib@1.0+osera-patch.001"}},
-		{CVE: "CVE-2", Coordinates: []string{"org.example:lib@1.0+osera-patch.002"}},
+		{CVE: "CVE-1", Coordinate: "org.example:lib@1.0+osera-patch.001"},
+		{CVE: "CVE-2", Coordinate: "org.example:lib@1.0+osera-patch.002"},
 	}
 	_, err := Build(line, fixed, "2026.10.07")
 	if err == nil || !strings.Contains(err.Error(), "one version per library") {
 		t.Fatalf("conflict not reported: %v", err)
 	}
-	_, err = Build(line, []status.FixedEntry{{CVE: "CVE-3", Coordinates: []string{"broken"}}}, "2026.10.07")
+	_, err = Build(line, []status.FixedEntry{{CVE: "CVE-3", Coordinate: "broken"}}, "2026.10.07")
 	if err == nil {
 		t.Fatal("a broken coordinate was accepted")
 	}
@@ -126,7 +128,7 @@ func TestUpload(t *testing.T) {
 	defer server.Close()
 	client := releases.New(server.URL, "line-manager", "secret")
 	client.HTTP = server.Client()
-	b, err := Build(line, []status.FixedEntry{{CVE: "CVE-1", Coordinates: []string{"org.example:lib@1.0+osera-patch.001"}}}, "2026.10.07")
+	b, err := Build(line, []status.FixedEntry{{CVE: "CVE-1", Coordinate: "org.example:lib@1.0+osera-patch.001"}}, "2026.10.07")
 	if err != nil {
 		t.Fatal(err)
 	}

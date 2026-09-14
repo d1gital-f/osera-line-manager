@@ -56,18 +56,16 @@ func Build(line book.Line, fixed []status.FixedEntry, version string) (*BOM, err
 	// 1. one dependency per distinct group:artifact
 	seen := map[string]Dependency{}
 	for _, entry := range fixed {
-		for _, coordinate := range entry.Coordinates {
-			dep, err := parseCoordinate(coordinate)
-			if err != nil {
-				return nil, fmt.Errorf("entry %s: %w", entry.CVE, err)
-			}
-			key := dep.Group + ":" + dep.Artifact
-			previous, known := seen[key]
-			if known && previous.Version != dep.Version {
-				return nil, fmt.Errorf("%s is pinned at %s and at %s on %s, one version per library", key, previous.Version, dep.Version, line.ID)
-			}
-			seen[key] = dep
+		dep, err := parseCoordinate(entry.Coordinate)
+		if err != nil {
+			return nil, fmt.Errorf("entry %s: %w", entry.CVE, err)
 		}
+		key := dep.Group + ":" + dep.Artifact
+		previous, known := seen[key]
+		if known && previous.Version != dep.Version {
+			return nil, fmt.Errorf("%s is pinned at %s and at %s on %s, one version per library", key, previous.Version, dep.Version, line.ID)
+		}
+		seen[key] = dep
 	}
 
 	// 2. in a stable order
