@@ -46,6 +46,11 @@ type pass struct {
 
 // Once runs one pass and returns the records. Ten steps, each safe to repeat.
 func (r *Reconciler) Once(ctx context.Context) ([]status.Record, error) {
+	return r.OnceFor(ctx, "")
+}
+
+// OnceFor is Once with the reason the pass runs, said in the log: the timer, a webhook, a hand.
+func (r *Reconciler) OnceFor(ctx context.Context, reason string) ([]status.Record, error) {
 	r.passes++
 	started := r.now()
 	p := &pass{asOf: started.UTC().Format(time.RFC3339), staged: map[string][]byte{}, before: map[string]string{}}
@@ -55,7 +60,14 @@ func (r *Reconciler) Once(ctx context.Context) ([]status.Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	Lowf("pass %d starting: backlog at %s, tag %s, %d lines: %s", r.passes, short(p.head), tagWords(p.bookVersion), len(p.lines), lineNames(p.lines))
+	since := ""
+	if !r.lastEnd.IsZero() {
+		since = "; the last pass ended " + seconds(started.Sub(r.lastEnd)) + " ago"
+	}
+	if reason == "" {
+		reason = "on request"
+	}
+	Lowf("pass %d starts %s: backlog at %s (tag %s), %d lines: %s%s", r.passes, reason, short(p.head), tagWords(p.bookVersion), len(p.lines), lineNames(p.lines), since)
 	records, err := r.run(ctx, p)
 	if err != nil {
 		// a pass that fails after writing into the worktree leaves the repository's own files
@@ -66,7 +78,12 @@ func (r *Reconciler) Once(ctx context.Context) ([]status.Record, error) {
 		}
 		return nil, err
 	}
-	Lowf("pass %d done in %s", r.passes, seconds(r.now().Sub(started)))
+	r.lastEnd = r.now()
+	next := ""
+	if !r.nextAt.IsZero() {
+		next = "; next pass on the timer at " + r.nextAt.UTC().Format("15:04:05Z")
+	}
+	Lowf("pass %d done in %s%s", r.passes, seconds(r.lastEnd.Sub(started)), next)
 	return records, nil
 }
 
@@ -93,20 +110,38 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 
 	// 2. the graph of every line, resolved when missing or built from another anchor
 	p.failed = map[string]error{}
+	var built, kept []string
 	for _, ln := range p.lines {
 		err = r.ensureGraph(ctx, p, ln)
 		if err != nil {
 			// one line's resolve failing does not stop the others; it is retried next pass
 			Lowf("%s: graph: %v (skipped this pass)", ln.ID, err)
 			p.failed[ln.ID] = err
+			continue
+		}
+		if p.staged[graphPath(ln.ID)] != nil {
+			built = append(built, ln.ID)
+		} else {
+			kept = append(kept, ln.ID)
 		}
 	}
+	logf("%s", graphsWords(built, kept))
 
 	// 3. the scan of every line whose graph is new or whose last scan is old, merged into the backlog
+	var due []book.Line
+	var reasons []string
 	for _, ln := range p.lines {
 		if p.failed[ln.ID] != nil {
 			continue
 		}
+		isDue, why := r.scanDecision(p, ln)
+		reasons = append(reasons, ln.ID+" "+why)
+		if isDue {
+			due = append(due, ln)
+		}
+	}
+	logf("%s", rescanWords(due, reasons))
+	for _, ln := range due {
 		err = r.scanLine(ctx, p, ln)
 		if err != nil {
 			Lowf("%s: scan: %v (skipped this pass)", ln.ID, err)
@@ -139,6 +174,9 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 			BacklogRepository: r.cfg.Repo,
 			Consume:           ln.Consume,
 		})
+		for _, words := range transitions(ln.ID, p.before, rec.Entries) {
+			logf("%s: %s", ln.ID, words)
+		}
 		r.replaceEntries(p, ln.ID, rec.Entries)
 
 		// 6. the BOM, when the promoted set of the line moved
@@ -177,8 +215,7 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 
 	// 10. one line per line
 	for _, rec := range p.records {
-		Lowf("%s: %s, in scope %d, fixed %d, in progress %d, open %d, not remediable %d, discrepancies %d, consume %q",
-			rec.Line, rec.Status, rec.InScope, len(rec.Fixed), len(rec.InProgress), len(rec.Open), len(rec.NotRemediable), len(rec.Discrepancies), rec.Consume)
+		Lowf("%s", recordWords(rec))
 	}
 	return p.records, nil
 }

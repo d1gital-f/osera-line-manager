@@ -73,7 +73,7 @@ func (r *Reconciler) ensureGraph(ctx context.Context, p *pass, ln book.Line) err
 		return err
 	}
 	if !needed {
-		logf("%s: graph kept, built from the same anchor %s and the same rule", ln.ID, ln.Anchor)
+		highf("%s: graph kept, built from the same anchor %s and the same rule", ln.ID, ln.Anchor)
 		return nil
 	}
 	if ln.Ecosystem != "maven" {

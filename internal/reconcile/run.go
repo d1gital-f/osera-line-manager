@@ -7,6 +7,7 @@ package reconcile
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -30,7 +31,8 @@ func (r *Reconciler) Run(ctx context.Context) error {
 	logf("listening on %s, a pass every %s", server.Addr, r.cfg.Interval)
 
 	// 2. the first pass, then the ticker and the wake ups
-	r.pass(ctx)
+	r.nextAt = r.now().Add(r.cfg.Interval)
+	r.passFor(ctx, "on start, from an empty cache: every line is scanned again and every evidence file is read again")
 	ticker := time.NewTicker(r.cfg.Interval)
 	defer ticker.Stop()
 	for {
@@ -42,17 +44,17 @@ func (r *Reconciler) Run(ctx context.Context) error {
 		case err := <-serverErr:
 			return err
 		case <-ticker.C:
-			r.pass(ctx)
-		case <-r.wake:
-			logf("a promotion was announced by the release repository, one more pass")
-			r.pass(ctx)
+			r.nextAt = r.now().Add(r.cfg.Interval)
+			r.passFor(ctx, fmt.Sprintf("on the timer (every %s)", r.cfg.Interval))
+		case reason := <-r.wake:
+			r.passFor(ctx, reason)
 		}
 	}
 }
 
-// pass runs Once and logs a failure instead of stopping the loop.
-func (r *Reconciler) pass(ctx context.Context) {
-	_, err := r.Once(ctx)
+// passFor runs one pass for a reason and logs a failure instead of stopping the loop.
+func (r *Reconciler) passFor(ctx context.Context, reason string) {
+	_, err := r.OnceFor(ctx, reason)
 	if err != nil {
 		Lowf("pass %d failed: %v", r.passes, err)
 	}
@@ -67,8 +69,8 @@ func (r *Reconciler) mux() *http.ServeMux {
 	mux.Handle("GET /status/", http.StripPrefix("/status/", http.FileServer(http.Dir(filepath.Join(r.workDir(), "status")))))
 	mux.HandleFunc("POST /pass", func(w http.ResponseWriter, _ *http.Request) {
 		select {
-		case r.wake <- struct{}{}:
-			logf("a pass was asked for by hand on /pass")
+		case r.wake <- "by hand, POST /pass":
+			logf("a pass was asked for by hand on /pass; it starts now, or when the running one ends")
 			w.WriteHeader(http.StatusAccepted)
 		default:
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -76,11 +78,12 @@ func (r *Reconciler) mux() *http.ServeMux {
 	})
 	mux.Handle("POST /webhook", releases.Handler(r.cfg.WebhookSecret, func(ev releases.Event) {
 		if ev.Repository != r.cfg.Nexus.ReleaseRepository {
+			logf("webhook from %s ignored: not the release repository", ev.Repository)
 			return
 		}
-		logf("webhook: %s %s in %s", ev.Action, ev.Coordinate, ev.Repository)
+		logf("webhook from the release repository: %s %s; a pass starts now, or when the running one ends", ev.Action, ev.Coordinate)
 		select {
-		case r.wake <- struct{}{}:
+		case r.wake <- fmt.Sprintf("on the webhook: %s %s", ev.Action, ev.Coordinate):
 		default:
 		}
 	}))

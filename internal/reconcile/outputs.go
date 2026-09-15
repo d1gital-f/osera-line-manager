@@ -238,6 +238,7 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
+	logf("changes to commit: %s", changesWords(paths))
 	highf("staged %d files for the commit: %s", len(paths), strings.Join(paths, ", "))
 	if r.cfg.Dry || r.clone == nil {
 		logf("dry run, would commit %s", strings.Join(paths, ", "))
@@ -269,15 +270,15 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 	if err != nil {
 		return err
 	}
-	Lowf("pull request #%d opened for %s", number, branch)
+	Lowf("pull request #%d opened for %s, waiting for validate (up to %s)", number, branch, r.checkTimeout())
 	waited := r.now()
-	green, err := r.waitForChecks(ctx, commit.SHA)
+	green, why, err := r.waitForChecks(ctx, commit.SHA)
 	if err != nil {
 		return err
 	}
 	if !green {
-		logf("validate: red after %s, pull request #%d left open for a person", seconds(r.now().Sub(waited)), number)
-		return r.api.Comment(ctx, r.cfg.Owner, r.cfg.Repo, number, "validate is not green on "+commit.SHA[:7]+", the line manager leaves this pull request for a person.")
+		logf("validate: not green after %s (%s); pull request #%d left open for a person", seconds(r.now().Sub(waited)), why, number)
+		return r.api.Comment(ctx, r.cfg.Owner, r.cfg.Repo, number, "validate is not green on "+commit.SHA[:7]+" ("+why+"), the line manager leaves this pull request for a person.")
 	}
 	logf("validate: green after %s", seconds(r.now().Sub(waited)))
 
@@ -306,6 +307,7 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 
 	// 4. the tag, when the backlog changed
 	if !p.backlogChanged {
+		logf("no tag: the backlog file did not change")
 		return nil
 	}
 	tags, err := r.clone.Tags()
@@ -317,7 +319,7 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 	if err != nil {
 		return err
 	}
-	Lowf("tagged %s at %s", name, head[:7])
+	Lowf("tagged %s at %s: the backlog changed, the issues workflow runs on the tag", name, head[:7])
 	return nil
 }
 
@@ -353,23 +355,26 @@ func tagName(now time.Time, existing []string) string {
 
 // waitForChecks polls the checks on a commit until every one has a conclusion
 // or the wait is over. Green means every check passed, or no check exists.
-func (r *Reconciler) waitForChecks(ctx context.Context, sha string) (bool, error) {
-	timeout := r.cfg.CheckTimeout
-	if timeout == 0 {
-		timeout = 10 * time.Minute
+func (r *Reconciler) checkTimeout() time.Duration {
+	if r.cfg.CheckTimeout == 0 {
+		return 10 * time.Minute
 	}
-	deadline := r.now().Add(timeout)
+	return r.cfg.CheckTimeout
+}
+
+func (r *Reconciler) waitForChecks(ctx context.Context, sha string) (bool, string, error) {
+	deadline := r.now().Add(r.checkTimeout())
 	announced := false
 	for {
 		checks, err := r.api.Checks(ctx, r.cfg.Owner, r.cfg.Repo, sha)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 
 		// 1. the named check must exist: GitHub creates the check run a few seconds
 		//    after the pull request opens, and no check at all is not green
 		if !announced {
-			logf("validate: pending")
+			highf("validate: pending")
 			announced = true
 		}
 		pending := false
@@ -383,20 +388,23 @@ func (r *Reconciler) waitForChecks(ctx context.Context, sha string) (bool, error
 				pending = true
 			case "success", "neutral", "skipped":
 			default:
-				return false, nil
+				return false, c.Name + " failed", nil
 			}
 		}
 		if found && !pending {
-			return true, nil
+			return true, "", nil
 		}
 
 		// 2. wait, bounded
 		if r.now().After(deadline) {
-			return false, nil
+			if !found {
+				return false, "no " + requiredCheck + " check ran on the commit", nil
+			}
+			return false, requiredCheck + " did not finish", nil
 		}
 		select {
 		case <-ctx.Done():
-			return false, ctx.Err()
+			return false, "", ctx.Err()
 		case <-time.After(15 * time.Second):
 		}
 	}
@@ -422,8 +430,7 @@ func (r *Reconciler) settleIssues(ctx context.Context, p *pass, issues []status.
 		if err != nil {
 			return err
 		}
-		Lowf("%sd issue #%d in %s", verb(a.Reopen), a.Number, a.Repository)
-		highf("comment on #%d: %s", a.Number, a.Comment)
+		Lowf("%sd issue #%d in %s: %s", verb(a.Reopen), a.Number, a.Repository, a.Comment)
 	}
 	return nil
 }

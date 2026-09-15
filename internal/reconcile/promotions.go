@@ -29,7 +29,7 @@ func (r *Reconciler) readBoard(ctx context.Context) ([]status.Issue, error) {
 		return nil, fmt.Errorf("reading the board: %w", err)
 	}
 	issues := board.Issues(cards, r.cfg.Repo)
-	logf("%s", boardSummary(issues, r.cfg.Repo))
+	logf("%s", boardWords(issues, r.cfg.Repo))
 	return issues, nil
 }
 
@@ -74,6 +74,8 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 	read := 0
 	patched := 0
 	withEvidence := 0
+	var fresh, without []string
+	seen := map[string]bool{}
 	for _, c := range coords {
 		if ownUpload(p.own, c) || c.Group == bom.Group {
 			out = append(out, status.Promotion{Coordinate: c})
@@ -85,6 +87,10 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 		}
 		patched++
 		key := c.String()
+		seen[key] = true
+		if r.seenCoords != nil && !r.seenCoords[key] {
+			fresh = append(fresh, key)
+		}
 		ev, known := cache.Evidence[key]
 		if !known {
 			ev, err = r.nexus.Evidence(ctx, r.cfg.Nexus.ReleaseRepository, c)
@@ -94,17 +100,18 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 					return nil, err
 				}
 				ev = nil
-				highf("release repository: %s has no evidence file yet", key)
+				without = append(without, key)
 			} else {
 				cache.Evidence[key] = ev
+				logf("release repository: evidence for %s read: producer %s, fixes %s", key, ev.Producer, strings.Join(ev.CVEs(), ", "))
 			}
 		}
 		if ev != nil {
 			withEvidence++
-			highf("release repository: %s fixes %s, producer %s", key, strings.Join(ev.CVEs(), ", "), ev.Producer)
 		}
 		out = append(out, status.Promotion{Coordinate: c, Evidence: ev})
 	}
+	r.seenCoords = seen
 
 	// 4. the cache saved when an evidence file was read
 	if read > 0 && len(cache.Evidence) > 0 {
@@ -117,7 +124,7 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 			return nil, err
 		}
 	}
-	logf("release repository: %d coordinates, %d patched, %d with an evidence file, %d read this pass", len(coords), patched, withEvidence, read)
+	logf("%s", releasesWords(len(coords), patched, withEvidence, fresh, without))
 	return out, nil
 }
 

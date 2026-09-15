@@ -42,14 +42,34 @@ func needsScan(stamp string, justBuilt, hasEntries bool, interval time.Duration,
 	return now.Sub(last) >= interval
 }
 
-// scanLine scans the line's graph when due and merges the result into the backlog.
-func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error {
-	// 1. the decision
+// scanDecision says whether the line is scanned this pass and why, in words for the log.
+func (r *Reconciler) scanDecision(p *pass, ln book.Line) (bool, string) {
 	justBuilt := p.staged[graphPath(ln.ID)] != nil
 	hasEntries := len(p.book.ForLine(ln.ID)) > 0
-	if !needsScan(r.scanStamp(ln.ID), justBuilt, hasEntries, r.cfg.RescanInterval, r.now()) {
-		return nil
+	interval := r.cfg.RescanInterval
+	if justBuilt {
+		return true, "is due: its graph was built this pass"
 	}
+	if !hasEntries {
+		return true, "is due: it has no entry in the backlog yet"
+	}
+	raw, err := os.ReadFile(r.scanStamp(ln.ID))
+	if err != nil {
+		return true, "is due: no scan is recorded since the restart"
+	}
+	last, err := time.Parse(time.RFC3339, strings.TrimSpace(string(raw)))
+	if err != nil {
+		return true, "is due: the scan record is unreadable"
+	}
+	if r.now().Sub(last) >= interval {
+		return true, fmt.Sprintf("is due: last scanned %s, scanned again every %s", last.UTC().Format("2 Jan 15:04"), interval)
+	}
+	return false, fmt.Sprintf("last scanned %s, next %s", last.UTC().Format("2 Jan 15:04"), last.Add(interval).UTC().Format("2 Jan 15:04"))
+}
+
+// scanLine scans the line's graph and merges the result into the backlog. The caller decided it is due.
+func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error {
+	// 1. the rules
 	if p.rules == nil {
 		Lowf("%s: no rules file in the repository, the scan is skipped", ln.ID)
 		return nil
@@ -85,8 +105,10 @@ func (r *Reconciler) scanLine(ctx context.Context, p *pass, ln book.Line) error 
 	}
 	logf("%s, in %s", scanSummary(ln.ID, findings, split), seconds(r.now().Sub(started)))
 
-	// 4. merged into the backlog, the file's memory kept
+	// 4. merged into the backlog, the file's memory kept; what moved, said
+	before := p.book.ForLine(ln.ID)
 	p.book.Entries = mergeScan(p.book.Entries, ln.ID, split.Entries)
+	logf("%s: %s", ln.ID, scanDelta(before, p.book.ForLine(ln.ID)))
 	excluded, err := r.mergeExcluded(ln.ID, split.Excluded)
 	if err != nil {
 		return err

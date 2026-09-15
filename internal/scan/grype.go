@@ -105,7 +105,7 @@ func (g *GrypeScanner) NeedsUpdate() bool {
 func (g *GrypeScanner) UpdateDB(ctx context.Context) error {
 	// 1. only when needed
 	if !g.NeedsUpdate() {
-		g.announce("grype: database current, %s", g.DBStatus(ctx))
+		g.say("grype: database current, %s", g.DBStatus(ctx))
 		return nil
 	}
 	err := os.MkdirAll(g.DBDir, 0o755)

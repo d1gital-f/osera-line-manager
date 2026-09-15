@@ -112,15 +112,20 @@ type Reconciler struct {
 	// scanFn stands in for the scanner when set, in tests.
 	scanFn func(ctx context.Context, lineID string, components []scan.Component) ([]scan.Finding, error)
 	now    func() time.Time
-	// wake receives one signal per accepted webhook event; the loop coalesces them.
-	wake chan struct{}
+	// wake receives the reason for one more pass, a webhook or a request by hand; the loop coalesces them.
+	wake chan string
+	// lastEnd and nextAt are when the last pass ended and when the timer fires next, for the log.
+	lastEnd time.Time
+	nextAt  time.Time
+	// seenCoords remembers the patched coordinates the release repository showed on the last pass.
+	seenCoords map[string]bool
 	// passes counts the passes since the start, for the log.
 	passes int
 }
 
 // New builds the clients from the configuration. Nothing is read yet.
 func New(ctx context.Context, cfg Config) (*Reconciler, error) {
-	r := &Reconciler{cfg: cfg, now: cfg.Now, wake: make(chan struct{}, 1)}
+	r := &Reconciler{cfg: cfg, now: cfg.Now, wake: make(chan string, 1)}
 	if r.now == nil {
 		r.now = time.Now
 	}
