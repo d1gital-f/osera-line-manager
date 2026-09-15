@@ -185,9 +185,9 @@ func TestIssuesPreferTheOpenCard(t *testing.T) {
 // without a version stands for the CVE alone.
 func TestIssuesPerLibraryVersion(t *testing.T) {
 	cards := []Card{
-		{CVE: "CVE-1", Title: "P1 CVE-1 in jackson-core 2.14.2", Repository: "patch-jackson-core", Number: 3, State: "OPEN"},
-		{CVE: "CVE-1", Title: "P1 CVE-1 in jackson-core 2.13.5", Repository: "backlog", Number: 9, State: "OPEN"},
-		{CVE: "CVE-2", Title: "P0 CVE-2 in snakeyaml", Repository: "backlog", Number: 4, State: "OPEN"},
+		{CVE: "CVE-2025-0001", Title: "P1 CVE-2025-0001 in jackson-core 2.14.2", Repository: "patch-jackson-core", Number: 3, State: "OPEN"},
+		{CVE: "CVE-2025-0001", Title: "P1 CVE-2025-0001 in jackson-core 2.13.5", Repository: "backlog", Number: 9, State: "OPEN"},
+		{CVE: "CVE-2025-0002", Title: "P0 CVE-2025-0002 in snakeyaml", Repository: "backlog", Number: 4, State: "OPEN"},
 	}
 	for i := range cards {
 		if m := libraryInTitle.FindStringSubmatch(cards[i].Title); m != nil {
@@ -199,13 +199,13 @@ func TestIssuesPerLibraryVersion(t *testing.T) {
 		t.Fatalf("issues %+v", is)
 	}
 	idx := status.IndexCards(is)
-	if c, ok := idx.For("CVE-1", "com.fasterxml.jackson.core:jackson-core", "2.13.5"); !ok || c.Number != 9 {
+	if c, ok := idx.For("CVE-2025-0001", "com.fasterxml.jackson.core:jackson-core", "2.13.5"); !ok || c.Number != 9 {
 		t.Fatalf("the 2.13.5 entry must find its own issue: %+v %v", c, ok)
 	}
-	if c, ok := idx.For("CVE-1", "com.fasterxml.jackson.core:jackson-core", "2.12.0"); ok {
+	if c, ok := idx.For("CVE-2025-0001", "com.fasterxml.jackson.core:jackson-core", "2.12.0"); ok {
 		t.Fatalf("no issue for an unlisted version, got %+v", c)
 	}
-	if c, ok := idx.For("CVE-2", "org.yaml:snakeyaml", "1.33"); !ok || c.Number != 4 {
+	if c, ok := idx.For("CVE-2025-0002", "org.yaml:snakeyaml", "1.33"); !ok || c.Number != 4 {
 		t.Fatalf("an older issue without a version stands for the CVE: %+v %v", c, ok)
 	}
 }
