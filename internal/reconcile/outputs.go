@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -407,50 +408,70 @@ const requiredCheck = "validate"
 // settleIssues closes the issue of every entry that became fixed or not
 // remediable this pass, and reopens the ones whose declaration was withdrawn.
 func (r *Reconciler) settleIssues(ctx context.Context, p *pass, issues []status.Issue) error {
+	for _, a := range issueActions(p, issues) {
+		if r.cfg.Dry || r.api == nil {
+			logf("dry run, would %s issue #%d in %s: %s", verb(a.Reopen), a.Number, a.Repository, a.Comment)
+			continue
+		}
+		var err error
+		if a.Reopen {
+			err = r.api.ReopenIssue(ctx, r.cfg.Owner, a.Repository, a.Number, a.Comment)
+		} else {
+			err = r.api.CloseIssue(ctx, r.cfg.Owner, a.Repository, a.Number, a.Comment)
+		}
+		if err != nil {
+			return err
+		}
+		Lowf("%sd issue #%d in %s", verb(a.Reopen), a.Number, a.Repository)
+		highf("comment on #%d: %s", a.Number, a.Comment)
+	}
+	return nil
+}
+
+// issueAction is one close or reopen the pass decided, with its comment.
+type issueAction struct {
+	Repository string
+	Number     int
+	Comment    string
+	Reopen     bool
+}
+
+// issueActions decides which issues to close or reopen from the entries' statuses
+// before and after the pass. One action per issue, an issue being one per repository
+// and number: #1 in one patch repository is not #1 in another.
+func issueActions(p *pass, issues []status.Issue) []issueAction {
 	cards := map[string]status.Issue{}
 	for _, is := range issues {
 		cards[is.CVE] = is
 	}
-	done := map[int]bool{}
+	done := map[string]bool{}
+	var out []issueAction
 	for _, rec := range p.records {
 		for _, e := range rec.Entries {
 			was := p.before[entryKey(rec.Line, e.CVE, e.Library)]
 			card, onBoard := cards[e.CVE]
-			if !onBoard || card.Number == 0 || done[card.Number] {
+			key := card.Repository + "#" + strconv.Itoa(card.Number)
+			if !onBoard || card.Number == 0 || done[key] {
 				continue
 			}
-			comment := ""
-			reopen := false
+			a := issueAction{Repository: card.Repository, Number: card.Number}
 			switch {
-			case e.Status == book.EntryFixed && was != book.EntryFixed:
-				comment = "Fixed by " + e.FixedBy + ", in " + consumeWords(rec.Consume) + "."
+			case e.Status == book.EntryFixed && (was != book.EntryFixed || card.State == "OPEN"):
+				// fixed this pass, or fixed earlier while the issue is still open: closed either way
+				a.Comment = "Fixed by " + e.FixedBy + ", in " + consumeWords(rec.Consume) + "."
 			case e.Status == book.EntryNotRemediable && was != book.EntryNotRemediable:
-				comment = "Not remediable, stated by " + producerWords(e.Producer) + " on " + p.asOf + ". The entry is counted apart."
+				a.Comment = "Not remediable, stated by " + producerWords(e.Producer) + " on " + p.asOf + ". The entry is counted apart."
 			case was == book.EntryNotRemediable && e.Status != book.EntryNotRemediable && e.Status != book.EntryFixed && card.State == "CLOSED":
-				comment = "The not remediable label was removed, the entry is " + e.Status + " again."
-				reopen = true
+				a.Comment = "The not remediable label was removed, the entry is " + e.Status + " again."
+				a.Reopen = true
 			default:
 				continue
 			}
-			done[card.Number] = true
-			if r.cfg.Dry || r.api == nil {
-				logf("dry run, would %s issue #%d in %s: %s", verb(reopen), card.Number, card.Repository, comment)
-				continue
-			}
-			var err error
-			if reopen {
-				err = r.api.ReopenIssue(ctx, r.cfg.Owner, card.Repository, card.Number, comment)
-			} else {
-				err = r.api.CloseIssue(ctx, r.cfg.Owner, card.Repository, card.Number, comment)
-			}
-			if err != nil {
-				return err
-			}
-			Lowf("%sd issue #%d in %s", verb(reopen), card.Number, card.Repository)
-			highf("comment on #%d: %s", card.Number, comment)
+			done[key] = true
+			out = append(out, a)
 		}
 	}
-	return nil
+	return out
 }
 
 func verb(reopen bool) string {
