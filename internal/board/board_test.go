@@ -166,7 +166,6 @@ func TestReadLearnsTheLanes(t *testing.T) {
 	}
 }
 
-
 // 4. A closed duplicate in the backlog does not shadow the open issue for the same CVE.
 func TestIssuesPreferTheOpenCard(t *testing.T) {
 	cards := []Card{
