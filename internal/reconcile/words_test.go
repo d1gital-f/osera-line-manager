@@ -55,6 +55,10 @@ func TestWords(t *testing.T) {
 	if recordWords(rec) != "dev-1.0.x: fixed. 3 in scope: 3 fixed, 0 in progress, 0 open, 0 not remediable. Banks consume org.finos.osera:osera-bom-dev-1.0.x@2026.09.15." {
 		t.Fatalf("record %q", recordWords(rec))
 	}
+	old := status.Record{Line: "dev-1.0.x", Status: "not fixed", InScope: 3, Open: []status.EntryRef{{}, {}, {}}}
+	if recordWordsWas(rec, old) != "dev-1.0.x: fixed (was not fixed). 3 in scope: 3 fixed (was 0), 0 in progress, 0 open (was 3), 0 not remediable. Banks consume org.finos.osera:osera-bom-dev-1.0.x@2026.09.15." {
+		t.Fatalf("record was %q", recordWordsWas(rec, old))
+	}
 
 	// 5. a scan compared with the backlog
 	if scanDelta(entries, entries) != "compared with the backlog: nothing new, 4 entries unchanged" {

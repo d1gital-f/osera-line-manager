@@ -248,14 +248,36 @@ func changesWords(paths []string) string {
 
 // recordWords is a line's state at the end of the pass in one sentence.
 func recordWords(rec status.Record) string {
-	out := fmt.Sprintf("%s: %s. %d in scope: %d fixed, %d in progress, %d open, %d not remediable", rec.Line, rec.Status, rec.InScope, len(rec.Fixed), len(rec.InProgress), len(rec.Open), len(rec.NotRemediable))
+	return recordWordsWas(rec, rec)
+}
+
+// recordWordsWas is recordWords with what each number was on the previous pass, said
+// only where it moved: "3 in scope: 0 fixed (was 3), 0 in progress, 3 open (was 0)".
+func recordWordsWas(rec, old status.Record) string {
+	was := func(now, before int) string {
+		if now == before {
+			return ""
+		}
+		return fmt.Sprintf(" (was %d)", before)
+	}
+	state := rec.Status
+	if old.Status != "" && old.Status != rec.Status {
+		state += " (was " + old.Status + ")"
+	}
+	out := fmt.Sprintf("%s: %s. %d in scope%s: %d fixed%s, %d in progress%s, %d open%s, %d not remediable%s",
+		rec.Line, state,
+		rec.InScope, was(rec.InScope, old.InScope),
+		len(rec.Fixed), was(len(rec.Fixed), len(old.Fixed)),
+		len(rec.InProgress), was(len(rec.InProgress), len(old.InProgress)),
+		len(rec.Open), was(len(rec.Open), len(old.Open)),
+		len(rec.NotRemediable), was(len(rec.NotRemediable), len(old.NotRemediable)))
 	if len(rec.Discrepancies) > 0 {
 		out += fmt.Sprintf("; %d discrepancies for a person (status/%s.json)", len(rec.Discrepancies), rec.Line)
 	}
 	if rec.Consume != "" {
 		return out + ". Banks consume " + rec.Consume + "."
 	}
-	return out + ". Nothing to consume yet."
+	return out + ". No BOM for banks yet."
 }
 
 // shortLibrary is the artifact without its group, enough in a log line.

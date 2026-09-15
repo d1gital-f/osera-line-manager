@@ -6,9 +6,11 @@ package reconcile
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -42,6 +44,8 @@ type pass struct {
 	// own is the intent note found at the start of the pass, nil when none.
 	own     *intent.Intent
 	records []status.Record
+	// previous is each line's status file as the pass found it, for the "was" in the log.
+	previous map[string]status.Record
 }
 
 // Once runs one pass and returns the records. Ten steps, each safe to repeat.
@@ -163,10 +167,14 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 		return nil, err
 	}
 
-	// 5. one record per line
+	// 5. one record per line, the previous one remembered for the log
+	p.previous = map[string]status.Record{}
 	for _, ln := range p.lines {
 		if p.failed[ln.ID] != nil {
 			continue
+		}
+		if old, err := readRecord(r.path(filepath.Join("status", ln.ID+".json"))); err == nil {
+			p.previous[ln.ID] = old
 		}
 		rec := status.Compute(status.Inputs{
 			Line:              ln,
@@ -217,9 +225,14 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 		return nil, err
 	}
 
-	// 10. one line per line
+	// 10. one line per line, with what the numbers were
 	for _, rec := range p.records {
-		Lowf("%s", recordWords(rec))
+		old, known := p.previous[rec.Line]
+		if known {
+			Lowf("%s", recordWordsWas(rec, old))
+		} else {
+			Lowf("%s", recordWords(rec))
+		}
 	}
 	return p.records, nil
 }
@@ -368,4 +381,15 @@ func (r *Reconciler) discard(p *pass) error {
 	}
 	sort.Strings(paths)
 	return r.clone.Restore(paths)
+}
+
+// readRecord reads a line's status file as it is in the clone.
+func readRecord(path string) (status.Record, error) {
+	var rec status.Record
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return rec, err
+	}
+	err = json.Unmarshal(raw, &rec)
+	return rec, err
 }

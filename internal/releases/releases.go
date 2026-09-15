@@ -69,7 +69,8 @@ type Coordinate struct {
 // ratified forms of OSERA-SP-0.1.0, the same rule the fitness library applies:
 //
 //	generic  2.14.2+osera-patch.001    -> base 2.14.2,       patch 001
-//	Java     5.3.39.1-osera-00001      -> base 5.3.39,       patch 00001  (REL-003-JAVA, numeric base, the OSGi qualifier dropped)
+//	Java     5.3.39.1-osera-00001      -> base 5.3.39,       patch 00001  (REL-003-JAVA, the .N the patch added dropped, as the gate reads it)
+//	Java     1.33.1-osera-00001        -> base 1.33,         patch 00001
 //	Java     5.6.15.Final-osera-00001  -> base 5.6.15.Final, patch 00001  (qualified base)
 func NewCoordinate(group, artifact, version string) Coordinate {
 	c := Coordinate{Group: group, Artifact: artifact, Version: version}
@@ -82,41 +83,20 @@ func NewCoordinate(group, artifact, version string) Coordinate {
 		return c
 	}
 
-	// 2. the Java form: the -osera-NNNNN suffix is the patch number
-	i := strings.LastIndex(version, javaSeparator)
-	if i <= 0 {
+	// 2. the Java form, read the way the gate reads it (REL-003-JAVA.CHECK-001): the
+	//    shortest base, then an optional .N the patch added, then -osera-NNNNN
+	m := carePattern.FindStringSubmatch(version)
+	if m == nil {
 		return c
 	}
-	base := version[:i]
-	patch := version[i+len(javaSeparator):]
-	if patch == "" || !allDigits(patch) {
-		return c
-	}
-
-	// 3. a numeric base with a fourth component: the qualifier the patch added, dropped
-	if numericFour.MatchString(base) {
-		base = base[:strings.LastIndex(base, ".")]
-	}
-	c.Base = base
-	c.Patch = patch
+	c.Base = m[1]
+	c.Patch = m[3]
 	return c
 }
 
-// javaSeparator is what REL-003-JAVA puts before the patch number: 5.3.39.1-osera-00001.
-const javaSeparator = "-osera-"
-
-// numericFour matches a base of four numeric components, 5.3.39.1, where the last is the patch's OSGi qualifier.
-var numericFour = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$`)
-
-// allDigits says whether a string is digits only.
-func allDigits(s string) bool {
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
+// carePattern is the gate's own expression for the Java form: 5.3.39.1-osera-00001 is
+// base 5.3.39, 1.33.1-osera-00001 is base 1.33, 3.10.6.Final-osera-00001 is base 3.10.6.Final.
+var carePattern = regexp.MustCompile(`^(.+?)(\.[0-9]+)?-osera-([0-9]{5})$`)
 
 // String is the coordinate as the backlog writes it, group:artifact@version.
 func (c Coordinate) String() string {

@@ -250,3 +250,21 @@ func TestNewCoordinateBothForms(t *testing.T) {
 		}
 	}
 }
+
+// The Java form is read the way the gate reads it: the .N the patch added is dropped
+// whatever the upstream's number of components.
+func TestNewCoordinateCARE(t *testing.T) {
+	cases := map[string][2]string{
+		"5.3.39.1-osera-00001":     {"5.3.39", "00001"},
+		"1.33.1-osera-00001":       {"1.33", "00001"},
+		"3.10.6.Final-osera-00001": {"3.10.6.Final", "00001"},
+		"2.14.2+osera-patch.001":   {"2.14.2", "001"},
+		"1.33":                     {"", ""},
+	}
+	for version, want := range cases {
+		c := NewCoordinate("g", "a", version)
+		if c.Base != want[0] || c.Patch != want[1] {
+			t.Fatalf("%s: base %q patch %q", version, c.Base, c.Patch)
+		}
+	}
+}
