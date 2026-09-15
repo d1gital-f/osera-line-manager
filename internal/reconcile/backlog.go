@@ -230,6 +230,7 @@ func (r *Reconciler) stageBacklog(p *pass, lineID string, header scan.Header, ex
 	if err != nil {
 		return err
 	}
+	p.book.Generated = header.Generated
 	rawTable := []byte(table(p.book))
 
 	// 3. nothing but the stamps moved: the old files stay, nothing is staged

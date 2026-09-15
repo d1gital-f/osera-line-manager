@@ -212,7 +212,7 @@ func sortEntries(entries []book.Entry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		a := entries[i]
 		b := entries[j]
-		return before(a.CISAKEV, b.CISAKEV, a.Priority, b.Priority, a.CVSS, b.CVSS, a.EPSSPercentile, b.EPSSPercentile, a.CVE, b.CVE, a.Library, b.Library)
+		return before(a.CISAKEV, b.CISAKEV, a.Priority, b.Priority, a.CVSS, b.CVSS, a.EPSSPercentile, b.EPSSPercentile, a.CVE, b.CVE, a.Library, b.Library, a.Version, b.Version, strings.Join(a.Lines, " "), strings.Join(b.Lines, " "))
 	})
 }
 
@@ -220,12 +220,12 @@ func sortExcluded(entries []Excluded) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		a := entries[i]
 		b := entries[j]
-		return before(a.CISAKEV, b.CISAKEV, a.Priority, b.Priority, a.CVSS, b.CVSS, a.EPSSPercentile, b.EPSSPercentile, a.CVE, b.CVE, a.Library, b.Library)
+		return before(a.CISAKEV, b.CISAKEV, a.Priority, b.Priority, a.CVSS, b.CVSS, a.EPSSPercentile, b.EPSSPercentile, a.CVE, b.CVE, a.Library, b.Library, a.Version, b.Version, strings.Join(a.Lines, " "), strings.Join(b.Lines, " "))
 	})
 }
 
 // before is the one ordering rule, shared by both lists.
-func before(aKEV, bKEV bool, aPrio, bPrio string, aScore, bScore float64, aEPSS, bEPSS *float64, aCVE, bCVE, aLib, bLib string) bool {
+func before(aKEV, bKEV bool, aPrio, bPrio string, aScore, bScore float64, aEPSS, bEPSS *float64, aCVE, bCVE, aLib, bLib, aVersion, bVersion, aLines, bLines string) bool {
 	if aKEV != bKEV {
 		return aKEV
 	}
@@ -243,7 +243,15 @@ func before(aKEV, bKEV bool, aPrio, bPrio string, aScore, bScore float64, aEPSS,
 	if aCVE != bCVE {
 		return aCVE < bCVE
 	}
-	return aLib < bLib
+	if aLib != bLib {
+		return aLib < bLib
+	}
+	// the same CVE on the same library for two lines, at their own versions: the
+	// version, then the lines, so the order never depends on which line was scanned last
+	if aVersion != bVersion {
+		return aVersion < bVersion
+	}
+	return aLines < bLines
 }
 
 func epssOf(p *float64) float64 {
