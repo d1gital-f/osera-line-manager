@@ -14,7 +14,6 @@ import (
 	"github.com/d1gital-f/osera-line-manager/internal/status"
 )
 
-
 // A line without a record this pass keeps the status columns it has; a line with one
 // takes the record's.
 func TestWriteLinesKeepsTheRowOfALineWithoutARecord(t *testing.T) {

@@ -10,7 +10,6 @@ import (
 	"github.com/d1gital-f/osera-line-manager/internal/book"
 )
 
-
 // Two entries alike in everything but their line keep one order whichever was
 // scanned last: a rescan of several lines must write the same file.
 func TestSortIsStableAcrossLines(t *testing.T) {
