@@ -30,11 +30,12 @@ func (r *Reconciler) Run(ctx context.Context) error {
 	}()
 	logf("listening on %s, a pass every %s", server.Addr, r.cfg.Interval)
 
-	// 2. the first pass, then the ticker and the wake ups
-	r.nextAt = r.now().Add(r.cfg.Interval)
-	r.passFor(ctx, "on start, from an empty cache: every line is scanned again and every evidence file is read again")
+	// 2. the ticker first, so the timer counts from the start and the log says the right
+	//    time, then the first pass, then the wake ups
 	ticker := time.NewTicker(r.cfg.Interval)
 	defer ticker.Stop()
+	r.nextAt = r.now().Add(r.cfg.Interval)
+	r.passFor(ctx, "on start, from an empty cache: every line is scanned again and every evidence file is read again")
 	for {
 		select {
 		case <-ctx.Done():
