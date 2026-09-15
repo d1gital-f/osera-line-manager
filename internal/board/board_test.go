@@ -7,6 +7,7 @@ package board
 import (
 	"context"
 	"encoding/json"
+	"github.com/d1gital-f/osera-line-manager/internal/status"
 	"net/http"
 	"net/http/httptest"
 	"testing"
