@@ -447,16 +447,13 @@ type issueAction struct {
 // before and after the pass. One action per issue, an issue being one per repository
 // and number: #1 in one patch repository is not #1 in another.
 func issueActions(p *pass, issues []status.Issue) []issueAction {
-	cards := map[string]status.Issue{}
-	for _, is := range issues {
-		cards[is.CVE] = is
-	}
+	cards := status.IndexCards(issues)
 	done := map[string]bool{}
 	var out []issueAction
 	for _, rec := range p.records {
 		for _, e := range rec.Entries {
 			was := p.before[entryKey(rec.Line, e.CVE, e.Library)]
-			card, onBoard := cards[e.CVE]
+			card, onBoard := cards.For(e.CVE, e.Library, e.Version)
 			key := card.Repository + "#" + strconv.Itoa(card.Number)
 			if !onBoard || card.Number == 0 || done[key] {
 				continue
@@ -512,10 +509,7 @@ const InProgressLane = "In Progress"
 // in progress that a producer took (in a patch repository, open) and that is not
 // there already. One move per card.
 func laneMoves(records []status.Record, issues []status.Issue, backlogRepository string) []status.Issue {
-	cards := map[string]status.Issue{}
-	for _, is := range issues {
-		cards[is.CVE] = is
-	}
+	cards := status.IndexCards(issues)
 	seen := map[string]bool{}
 	var out []status.Issue
 	for _, rec := range records {
@@ -523,7 +517,7 @@ func laneMoves(records []status.Record, issues []status.Issue, backlogRepository
 			if e.Status != book.EntryInProgress {
 				continue
 			}
-			card, onBoard := cards[e.CVE]
+			card, onBoard := cards.For(e.CVE, e.Library, e.Version)
 			if !onBoard || card.ItemID == "" || seen[card.ItemID] {
 				continue
 			}

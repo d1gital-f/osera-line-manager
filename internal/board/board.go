@@ -73,6 +73,9 @@ type Card struct {
 	Repository string   `json:"repository"`
 	URL        string   `json:"url"`
 	Labels     []string `json:"labels"`
+	// Artifact and Version are the library version in the title, empty on an older issue.
+	Artifact string `json:"artifact,omitempty"`
+	Version  string `json:"version,omitempty"`
 	// ItemID is the card's own id on the board, what a lane change is addressed to.
 	ItemID string `json:"item_id,omitempty"`
 	// Lane is the card's Status on the board as named there, empty when unset.
@@ -84,6 +87,9 @@ type Card struct {
 const NotRemediableLabel = "not remediable"
 
 var cveInTitle = regexp.MustCompile(`(CVE-[0-9]{4}-[0-9]+|GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4})`)
+
+// libraryInTitle is the rest of the title the issues workflow writes: "in <artifact> <version>".
+var libraryInTitle = regexp.MustCompile(`(?:CVE-[0-9]{4}-[0-9]+|GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}) in (\S+) (\S+)\s*$`)
 
 const query = `query($owner: String!, $number: Int!, $after: String) {
   organization(login: $owner) {
@@ -204,6 +210,10 @@ func (c *Client) Read(ctx context.Context) ([]Card, error) {
 				ItemID:     n.ID,
 				Lane:       n.FieldValueByName.Name,
 			}
+			if m := libraryInTitle.FindStringSubmatch(n.Content.Title); m != nil {
+				card.Artifact = m[1]
+				card.Version = m[2]
+			}
 			for _, l := range n.Content.Labels.Nodes {
 				card.Labels = append(card.Labels, l.Name)
 			}
@@ -266,10 +276,12 @@ func (c *Client) page(ctx context.Context, after string) (*page, error) {
 }
 
 // Issues turns the cards into what the status computation reads: one Issue per
-// CVE. When a CVE has more than one card the one outside the backlog repository
-// wins, it is the one a producer took; between two of the same kind the open one wins.
+// CVE and library version, the unit a producer patches (an older card without a
+// version in its title stands for its CVE alone). When one has more than one card
+// the one outside the backlog repository wins, it is the one a producer took;
+// between two of the same kind the open one wins.
 func Issues(cards []Card, backlogRepository string) []status.Issue {
-	// 1. one issue per CVE, the patch repository wins over the backlog
+	// 1. one issue per CVE and library version, the patch repository wins over the backlog
 	found := map[string]status.Issue{}
 	order := []string{}
 	for _, card := range cards {
@@ -281,27 +293,30 @@ func Issues(cards []Card, backlogRepository string) []status.Issue {
 			NotRemediable: hasLabel(card.Labels, NotRemediableLabel),
 			ItemID:        card.ItemID,
 			Lane:          card.Lane,
+			Artifact:      card.Artifact,
+			Version:       card.Version,
 		}
-		prev, seen := found[card.CVE]
+		key := status.CardKey(card.CVE, card.Artifact, card.Version)
+		prev, seen := found[key]
 		if !seen {
-			found[card.CVE] = is
-			order = append(order, card.CVE)
+			found[key] = is
+			order = append(order, key)
 			continue
 		}
 		// a patch repository wins over the backlog; between two of the same kind an open
 		// issue wins over a closed one, so a closed duplicate never shadows the live issue
 		switch {
 		case prev.Repository == backlogRepository && card.Repository != backlogRepository:
-			found[card.CVE] = is
+			found[key] = is
 		case (prev.Repository == backlogRepository) == (card.Repository == backlogRepository) && prev.State == "CLOSED" && card.State == "OPEN":
-			found[card.CVE] = is
+			found[key] = is
 		}
 	}
 
 	// 2. as a list, in the order the board gave them
 	out := make([]status.Issue, 0, len(found))
-	for _, cve := range order {
-		out = append(out, found[cve])
+	for _, key := range order {
+		out = append(out, found[key])
 	}
 	return out
 }

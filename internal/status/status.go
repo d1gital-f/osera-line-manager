@@ -44,6 +44,49 @@ type Issue struct {
 	// ItemID and Lane are the card on the board: its id, and its Status as named there.
 	ItemID string `json:"-"`
 	Lane   string `json:"-"`
+	// Artifact and Version are the library version the issue is for, from its title
+	// ("CVE-x in jackson-core 2.14.2"): an issue is one per CVE and library version,
+	// the unit a producer patches. Empty on an older issue titled by the CVE alone.
+	Artifact string `json:"artifact,omitempty"`
+	Version  string `json:"version,omitempty"`
+}
+
+// CardKey is how an issue and an entry meet: the CVE, the artifact and the version.
+func CardKey(cve, library, version string) string {
+	artifact := library
+	if i := strings.LastIndex(library, ":"); i >= 0 {
+		artifact = library[i+1:]
+	}
+	return cve + " " + artifact + " " + version
+}
+
+// Cards indexes the issues for the entries: by CVE, artifact and version, and by the CVE
+// alone for an older issue that names no version, which then stands for every version.
+type Cards struct {
+	byKey map[string]Issue
+	byCVE map[string]Issue
+}
+
+// IndexCards builds the index.
+func IndexCards(issues []Issue) Cards {
+	c := Cards{byKey: map[string]Issue{}, byCVE: map[string]Issue{}}
+	for _, is := range issues {
+		if is.Artifact == "" || is.Version == "" {
+			c.byCVE[is.CVE] = is
+			continue
+		}
+		c.byKey[CardKey(is.CVE, is.Artifact, is.Version)] = is
+	}
+	return c
+}
+
+// For finds the entry's card: the exact library version first, else an issue by the CVE alone.
+func (c Cards) For(cve, library, version string) (Issue, bool) {
+	if is, found := c.byKey[CardKey(cve, library, version)]; found {
+		return is, true
+	}
+	is, found := c.byCVE[cve]
+	return is, found
 }
 
 // ReasonOnIssue is the reason recorded when a producer labelled the issue not
@@ -156,15 +199,12 @@ func Compute(in Inputs) Record {
 	}
 
 	// 3. the board, one card per CVE
-	cards := map[string]Issue{}
-	for _, is := range in.Issues {
-		cards[is.CVE] = is
-	}
+	cards := IndexCards(in.Issues)
 
 	// 4. one entry at a time: fixed, else not remediable, else in progress, else open
 	for i := range entries {
 		e := &entries[i]
-		card, onBoard := cards[e.CVE]
+		card, onBoard := cards.For(e.CVE, e.Library, e.Version)
 		fix, found := bestFix(byLibrary[libraryKey(e.Library, e.Version)], e.CVE)
 		switch {
 		case found:
