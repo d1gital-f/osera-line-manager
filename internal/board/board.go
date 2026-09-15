@@ -267,7 +267,7 @@ func (c *Client) page(ctx context.Context, after string) (*page, error) {
 
 // Issues turns the cards into what the status computation reads: one Issue per
 // CVE. When a CVE has more than one card the one outside the backlog repository
-// wins, it is the one a producer took.
+// wins, it is the one a producer took; between two of the same kind the open one wins.
 func Issues(cards []Card, backlogRepository string) []status.Issue {
 	// 1. one issue per CVE, the patch repository wins over the backlog
 	found := map[string]status.Issue{}

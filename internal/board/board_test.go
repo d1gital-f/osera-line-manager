@@ -165,3 +165,18 @@ func TestReadLearnsTheLanes(t *testing.T) {
 		}
 	}
 }
+
+
+// 4. A closed duplicate in the backlog does not shadow the open issue for the same CVE.
+func TestIssuesPreferTheOpenCard(t *testing.T) {
+	cards := []Card{
+		{CVE: "CVE-1", Repository: "backlog", Number: 166, State: "CLOSED"},
+		{CVE: "CVE-1", Repository: "backlog", Number: 172, State: "OPEN"},
+		{CVE: "CVE-2", Repository: "patch-a", Number: 1, State: "CLOSED"},
+		{CVE: "CVE-2", Repository: "backlog", Number: 9, State: "OPEN"},
+	}
+	is := Issues(cards, "backlog")
+	if is[0].Number != 172 || is[1].Number != 1 {
+		t.Fatalf("issues %+v", is)
+	}
+}
