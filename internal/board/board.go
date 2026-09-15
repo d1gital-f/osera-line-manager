@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/d1gital-f/osera-line-manager/internal/status"
@@ -32,6 +33,11 @@ type Client struct {
 	HTTP   *http.Client
 	// URL is GitHub's GraphQL endpoint, a test server in tests.
 	URL string
+	// ProjectID, StatusFieldID and Lanes (Status option name to id) are learnt by Read,
+	// what a lane change needs.
+	ProjectID     string
+	StatusFieldID string
+	Lanes         map[string]string
 }
 
 // New returns a client with sane timeouts.
@@ -67,6 +73,10 @@ type Card struct {
 	Repository string   `json:"repository"`
 	URL        string   `json:"url"`
 	Labels     []string `json:"labels"`
+	// ItemID is the card's own id on the board, what a lane change is addressed to.
+	ItemID string `json:"item_id,omitempty"`
+	// Lane is the card's Status on the board as named there, empty when unset.
+	Lane string `json:"lane,omitempty"`
 }
 
 // NotRemediableLabel is the label a producer puts on an issue to say the CVE
@@ -78,9 +88,17 @@ var cveInTitle = regexp.MustCompile(`(CVE-[0-9]{4}-[0-9]+|GHSA-[0-9a-z]{4}-[0-9a
 const query = `query($owner: String!, $number: Int!, $after: String) {
   organization(login: $owner) {
     projectV2(number: $number) {
+      id
+      field(name: "Status") {
+        ... on ProjectV2SingleSelectField { id options { id name } }
+      }
       items(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
+          id
+          fieldValueByName(name: "Status") {
+            ... on ProjectV2ItemFieldSingleSelectValue { name }
+          }
           content {
             __typename
             ... on Issue {
@@ -103,12 +121,24 @@ type page struct {
 	Data struct {
 		Organization struct {
 			ProjectV2 struct {
+				ID    string `json:"id"`
+				Field struct {
+					ID      string `json:"id"`
+					Options []struct {
+						ID   string `json:"id"`
+						Name string `json:"name"`
+					} `json:"options"`
+				} `json:"field"`
 				Items struct {
 					PageInfo struct {
 						HasNextPage bool   `json:"hasNextPage"`
 						EndCursor   string `json:"endCursor"`
 					} `json:"pageInfo"`
 					Nodes []struct {
+						ID               string `json:"id"`
+						FieldValueByName struct {
+							Name string `json:"name"`
+						} `json:"fieldValueByName"`
 						Content struct {
 							TypeName   string `json:"__typename"`
 							Number     int    `json:"number"`
@@ -145,6 +175,14 @@ func (c *Client) Read(ctx context.Context) ([]Card, error) {
 		if err != nil {
 			return nil, err
 		}
+		if after == "" {
+			c.ProjectID = p.Data.Organization.ProjectV2.ID
+			c.StatusFieldID = p.Data.Organization.ProjectV2.Field.ID
+			c.Lanes = map[string]string{}
+			for _, o := range p.Data.Organization.ProjectV2.Field.Options {
+				c.Lanes[o.Name] = o.ID
+			}
+		}
 
 		// 2. one card per issue with a CVE in the title
 		for _, n := range p.Data.Organization.ProjectV2.Items.Nodes {
@@ -163,6 +201,8 @@ func (c *Client) Read(ctx context.Context) ([]Card, error) {
 				Repository: n.Content.Repository.Name,
 				URL:        n.Content.URL,
 				Labels:     []string{},
+				ItemID:     n.ID,
+				Lane:       n.FieldValueByName.Name,
 			}
 			for _, l := range n.Content.Labels.Nodes {
 				card.Labels = append(card.Labels, l.Name)
@@ -239,6 +279,8 @@ func Issues(cards []Card, backlogRepository string) []status.Issue {
 			Number:        card.Number,
 			State:         card.State,
 			NotRemediable: hasLabel(card.Labels, NotRemediableLabel),
+			ItemID:        card.ItemID,
+			Lane:          card.Lane,
 		}
 		prev, seen := found[card.CVE]
 		if !seen {
@@ -266,4 +308,64 @@ func hasLabel(labels []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// LaneOption is the id of the Status option whose name matches, letter case aside;
+// empty when the board has no such lane. Read must have run.
+func (c *Client) LaneOption(name string) string {
+	for n, id := range c.Lanes {
+		if strings.EqualFold(n, name) {
+			return id
+		}
+	}
+	return ""
+}
+
+const setLaneMutation = `mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+  updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) {
+    projectV2Item { id }
+  }
+}`
+
+// SetLane puts a card in the lane given by its Status option id. One mutation per card.
+func (c *Client) SetLane(ctx context.Context, itemID, optionID string) error {
+	body, err := json.Marshal(map[string]any{"query": setLaneMutation, "variables": map[string]any{
+		"project": c.ProjectID, "item": itemID, "field": c.StatusFieldID, "option": optionID}})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.Tokens != nil {
+		token, err := c.Tokens.Token(ctx)
+		if err != nil {
+			return fmt.Errorf("the board's token: %w", err)
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("moving the card: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("moving the card: HTTP %d", resp.StatusCode)
+	}
+	var answer struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		return fmt.Errorf("moving the card: %w", err)
+	}
+	if len(answer.Errors) > 0 {
+		return fmt.Errorf("moving the card: %s", answer.Errors[0].Message)
+	}
+	return nil
 }

@@ -14,10 +14,10 @@ import (
 
 // A board of two pages: three CVE issues, one closed with the label, one card
 // that is a draft (not an issue), one issue whose title carries no CVE.
-const pageOne = `{"data":{"organization":{"projectV2":{"items":{
+const pageOne = `{"data":{"organization":{"projectV2":{"id":"proj-1","field":{"id":"field-status","options":[{"id":"opt-todo","name":"Not claimed"},{"id":"opt-prog","name":"In Progress"},{"id":"opt-done","name":"Patched"}]},"items":{
   "pageInfo":{"hasNextPage":true,"endCursor":"c1"},
   "nodes":[
-    {"content":{"__typename":"Issue","number":1,"title":"P0 CVE-2025-24813 in tomcat-embed-core 9.0.83","state":"OPEN","url":"u1","repository":{"name":"backlog"},"labels":{"nodes":[{"name":"cve"},{"name":"P0 / Act"}]}}},
+    {"id":"item-1","fieldValueByName":{"name":"Not claimed"},"content":{"__typename":"Issue","number":1,"title":"P0 CVE-2025-24813 in tomcat-embed-core 9.0.83","state":"OPEN","url":"u1","repository":{"name":"backlog"},"labels":{"nodes":[{"name":"cve"},{"name":"P0 / Act"}]}}},
     {"content":{"__typename":"DraftIssue","number":0,"title":"a note","state":"","url":"","repository":{"name":""},"labels":{"nodes":[]}}},
     {"content":{"__typename":"Issue","number":2,"title":"line spring-boot-2.7.x is supported","state":"OPEN","url":"u2","repository":{"name":"backlog"},"labels":{"nodes":[]}}}
   ]}}}}}`
@@ -25,7 +25,7 @@ const pageOne = `{"data":{"organization":{"projectV2":{"items":{
 const pageTwo = `{"data":{"organization":{"projectV2":{"items":{
   "pageInfo":{"hasNextPage":false,"endCursor":""},
   "nodes":[
-    {"content":{"__typename":"Issue","number":3,"title":"P1 CVE-2024-38816 in spring-webmvc 5.3.39","state":"OPEN","url":"u3","repository":{"name":"patch-spring-framework"},"labels":{"nodes":[{"name":"cve"}]}}},
+    {"id":"item-3","fieldValueByName":{"name":"In Progress"},"content":{"__typename":"Issue","number":3,"title":"P1 CVE-2024-38816 in spring-webmvc 5.3.39","state":"OPEN","url":"u3","repository":{"name":"patch-spring-framework"},"labels":{"nodes":[{"name":"cve"}]}}},
     {"content":{"__typename":"Issue","number":4,"title":"P1 CVE-2016-1000027 in spring-web 5.3.39","state":"CLOSED","url":"u4","repository":{"name":"patch-spring-framework"},"labels":{"nodes":[{"name":"cve"},{"name":"not remediable"}]}}},
     {"content":{"__typename":"Issue","number":5,"title":"P1 CVE-2024-38816 in spring-webmvc 5.3.39","state":"OPEN","url":"u5","repository":{"name":"backlog"},"labels":{"nodes":[]}}}
   ]}}}}}`
@@ -135,5 +135,33 @@ func TestGraphQLError(t *testing.T) {
 	c.URL = s.URL
 	if _, err := c.Read(context.Background()); err == nil {
 		t.Fatal("expected an error")
+	}
+}
+
+// 3. The first page teaches the client the board's id, its Status field and its lanes;
+// every card carries its item id and lane; LaneOption ignores letter case.
+func TestReadLearnsTheLanes(t *testing.T) {
+	srv := server(t)
+	defer srv.Close()
+	c := New("dev-finos-osera-forks", 1, StaticToken("t"))
+	c.URL = srv.URL
+	cards, err := c.Read(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.ProjectID != "proj-1" || c.StatusFieldID != "field-status" || len(c.Lanes) != 3 {
+		t.Fatalf("project %q field %q lanes %v", c.ProjectID, c.StatusFieldID, c.Lanes)
+	}
+	if c.LaneOption("in progress") != "opt-prog" || c.LaneOption("Done") != "" {
+		t.Fatalf("lane option lookup: %v", c.Lanes)
+	}
+	if cards[0].ItemID != "item-1" || cards[0].Lane != "Not claimed" {
+		t.Fatalf("card 1 %+v", cards[0])
+	}
+	is := Issues(cards, "backlog")
+	for _, i := range is {
+		if i.Number == 3 && (i.ItemID != "item-3" || i.Lane != "In Progress") {
+			t.Fatalf("issue 3 lost its card: %+v", i)
+		}
 	}
 }

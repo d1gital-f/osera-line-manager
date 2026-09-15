@@ -497,3 +497,61 @@ func producerWords(producer string) string {
 	}
 	return producer
 }
+
+// InProgressLane is the name of the board lane a claimed issue is put in, letter case aside.
+const InProgressLane = "In Progress"
+
+// laneMoves lists the cards to put in the In Progress lane: the issue of every entry
+// in progress that a producer took (in a patch repository, open) and that is not
+// there already. One move per card.
+func laneMoves(records []status.Record, issues []status.Issue, backlogRepository string) []status.Issue {
+	cards := map[string]status.Issue{}
+	for _, is := range issues {
+		cards[is.CVE] = is
+	}
+	seen := map[string]bool{}
+	var out []status.Issue
+	for _, rec := range records {
+		for _, e := range rec.Entries {
+			if e.Status != book.EntryInProgress {
+				continue
+			}
+			card, onBoard := cards[e.CVE]
+			if !onBoard || card.ItemID == "" || seen[card.ItemID] {
+				continue
+			}
+			if card.Repository == backlogRepository || card.State != "OPEN" || strings.EqualFold(card.Lane, InProgressLane) {
+				continue
+			}
+			seen[card.ItemID] = true
+			out = append(out, card)
+		}
+	}
+	return out
+}
+
+// moveLanes puts the cards of the claimed issues in the In Progress lane, the one
+// board write the line manager makes: a transfer moves the issue, not its card.
+func (r *Reconciler) moveLanes(ctx context.Context, p *pass, issues []status.Issue) error {
+	moves := laneMoves(p.records, issues, r.cfg.Repo)
+	if len(moves) == 0 || r.board == nil {
+		return nil
+	}
+	option := r.board.LaneOption(InProgressLane)
+	if option == "" {
+		logf("board: no lane named %q, the %d claimed cards stay where they are", InProgressLane, len(moves))
+		return nil
+	}
+	for _, card := range moves {
+		if r.cfg.Dry {
+			logf("dry run, would move card #%d in %s from %q to %q", card.Number, card.Repository, card.Lane, InProgressLane)
+			continue
+		}
+		err := r.board.SetLane(ctx, card.ItemID, option)
+		if err != nil {
+			return err
+		}
+		Lowf("board: card #%d in %s moved from %q to %q, a producer has it", card.Number, card.Repository, card.Lane, InProgressLane)
+	}
+	return nil
+}

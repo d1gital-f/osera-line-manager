@@ -41,6 +41,9 @@ type Issue struct {
 	State string `json:"state,omitempty"`
 	// NotRemediable is true when the issue carries the "not remediable" label.
 	NotRemediable bool `json:"not_remediable,omitempty"`
+	// ItemID and Lane are the card on the board: its id, and its Status as named there.
+	ItemID string `json:"-"`
+	Lane   string `json:"-"`
 }
 
 // ReasonOnIssue is the reason recorded when a producer labelled the issue not

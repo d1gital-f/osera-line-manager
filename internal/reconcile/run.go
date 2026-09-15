@@ -58,13 +58,22 @@ func (r *Reconciler) pass(ctx context.Context) {
 	}
 }
 
-// mux is the server: GET /healthz, GET /status/<line>.json, POST /webhook.
+// mux is the server: GET /healthz, GET /status/<line>.json, POST /webhook, POST /pass (a pass by hand).
 func (r *Reconciler) mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.Handle("GET /status/", http.StripPrefix("/status/", http.FileServer(http.Dir(filepath.Join(r.workDir(), "status")))))
+	mux.HandleFunc("POST /pass", func(w http.ResponseWriter, _ *http.Request) {
+		select {
+		case r.wake <- struct{}{}:
+			logf("a pass was asked for by hand on /pass")
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			w.WriteHeader(http.StatusTooManyRequests)
+		}
+	})
 	mux.Handle("POST /webhook", releases.Handler(r.cfg.WebhookSecret, func(ev releases.Event) {
 		if ev.Repository != r.cfg.Nexus.ReleaseRepository {
 			return

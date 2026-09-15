@@ -46,3 +46,28 @@ func TestIssueActionsAreKeyedByRepositoryAndNumber(t *testing.T) {
 		t.Fatalf("comment %q", actions[1].Comment)
 	}
 }
+
+// The cards to move: the open issue of an in progress entry, in a patch repository,
+// not yet in the In Progress lane, letter case aside; each card once.
+func TestLaneMoves(t *testing.T) {
+	records := []status.Record{{Line: "dev-1.0.x", Entries: []book.Entry{
+		{CVE: "CVE-1", Library: "a", Status: book.EntryInProgress},
+		{CVE: "CVE-2", Library: "b", Status: book.EntryInProgress},
+		{CVE: "CVE-3", Library: "c", Status: book.EntryInProgress},
+		{CVE: "CVE-4", Library: "d", Status: book.EntryOpen},
+		{CVE: "CVE-5", Library: "e", Status: book.EntryInProgress},
+	}}, {Line: "spring-boot-2.7.x", Entries: []book.Entry{
+		{CVE: "CVE-1", Library: "a", Status: book.EntryInProgress},
+	}}}
+	issues := []status.Issue{
+		{CVE: "CVE-1", Repository: "patch-a", Number: 1, State: "OPEN", ItemID: "i1", Lane: "Not claimed"},
+		{CVE: "CVE-2", Repository: "patch-b", Number: 1, State: "OPEN", ItemID: "i2", Lane: "in progress"},
+		{CVE: "CVE-3", Repository: "patch-c", Number: 2, State: "CLOSED", ItemID: "i3", Lane: "Not claimed"},
+		{CVE: "CVE-4", Repository: "backlog", Number: 4, State: "OPEN", ItemID: "i4", Lane: "Not claimed"},
+		{CVE: "CVE-5", Repository: "patch-e", Number: 5, State: "OPEN", ItemID: "", Lane: ""},
+	}
+	moves := laneMoves(records, issues, "backlog")
+	if len(moves) != 1 || moves[0].ItemID != "i1" {
+		t.Fatalf("moves %+v", moves)
+	}
+}

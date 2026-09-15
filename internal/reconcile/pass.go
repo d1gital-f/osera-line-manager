@@ -170,6 +170,10 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 	if err != nil {
 		return nil, err
 	}
+	err = r.moveLanes(ctx, p, issues)
+	if err != nil {
+		return nil, err
+	}
 
 	// 10. one line per line
 	for _, rec := range p.records {
