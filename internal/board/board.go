@@ -288,7 +288,12 @@ func Issues(cards []Card, backlogRepository string) []status.Issue {
 			order = append(order, card.CVE)
 			continue
 		}
-		if prev.Repository == backlogRepository && card.Repository != backlogRepository {
+		// a patch repository wins over the backlog; between two of the same kind an open
+		// issue wins over a closed one, so a closed duplicate never shadows the live issue
+		switch {
+		case prev.Repository == backlogRepository && card.Repository != backlogRepository:
+			found[card.CVE] = is
+		case (prev.Repository == backlogRepository) == (card.Repository == backlogRepository) && prev.State == "CLOSED" && card.State == "OPEN":
 			found[card.CVE] = is
 		}
 	}
