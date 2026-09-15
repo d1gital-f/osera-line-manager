@@ -13,15 +13,15 @@ import (
 
 // Rule says where a resolve starts. A line is its projects at their versions, not
 // everything its anchor has an opinion about: the roots are the anchor's managed
-// artifacts whose group is one of the line's component groups (the anchor's own
-// group counts), plus a declared component the anchor does not manage, at its
-// declared version. A line with no components falls back to every managed artifact,
-// the wide graph, and says so. A jar anchor is its own single root whatever the rule.
+// artifacts whose group is one of the line's declared groups (the anchor's own group
+// counts). A line with no components falls back to every managed artifact, which for
+// a project's own BOM is exactly its modules, and for a list like Boot's is the wide
+// graph. A jar anchor is its own single root whatever the rule.
 type Rule struct {
 	// Groups are the root groups, sorted, empty for the fallback.
 	Groups []string
-	// Components are the line's declared components, roots when the anchor does not manage them.
-	Components []Component
+	// Declared are the line's declared components, a group at a version each.
+	Declared []book.Declared
 }
 
 // RootsProperty is the name of the metadata property recording the rule a graph was built with.
@@ -37,8 +37,8 @@ const ComponentsProperty = "osera:components"
 
 // Pin is a version override a declared component imposes on its whole group: every
 // managed artifact of Group at version From is taken at version To instead. The Wave 1
-// line declares spring-core 5.3.39 while Boot 2.7.18 manages 5.3.31, so the whole
-// Spring Framework moves to 5.3.39, the way a bank's build sets it.
+// line declares org.springframework@5.3.39 while Boot 2.7.18 manages 5.3.31, so the
+// whole Spring Framework moves to 5.3.39, the way a bank's build sets it.
 type Pin struct {
 	Group string
 	From  string
@@ -50,31 +50,41 @@ func (p Pin) String() string {
 	return p.Group + ":" + p.From + ">" + p.To
 }
 
-// pinsFor derives the pins from the managed list: one per declared component the anchor
-// manages at another version, once per group and version pair.
+// pinsFor derives the pins from the managed list: one per declared group and managed
+// version other than the declared one, in the managed order.
 func pinsFor(managed []Component, rule Rule) []Pin {
-	// 1. the managed version of every artifact
-	managedVersion := map[string]string{}
-	for _, c := range managed {
-		managedVersion[c.Group+":"+c.Artifact] = c.Version
-	}
-
-	// 2. a declared component managed at another version pins its group
 	var pins []Pin
 	seen := map[string]bool{}
-	for _, c := range rule.Components {
-		from, found := managedVersion[c.Group+":"+c.Artifact]
-		if !found || from == c.Version {
-			continue
+	for _, d := range rule.Declared {
+		for _, c := range managed {
+			if c.Group != d.Group || c.Version == d.Version {
+				continue
+			}
+			pin := Pin{Group: d.Group, From: c.Version, To: d.Version}
+			if seen[pin.String()] {
+				continue
+			}
+			seen[pin.String()] = true
+			pins = append(pins, pin)
 		}
-		pin := Pin{Group: c.Group, From: from, To: c.Version}
-		if seen[pin.String()] {
-			continue
-		}
-		seen[pin.String()] = true
-		pins = append(pins, pin)
 	}
 	return pins
+}
+
+// unmanagedGroups are the declared groups the anchor manages nothing of: they give the
+// line no roots, and the build says so.
+func unmanagedGroups(managed []Component, rule Rule) []string {
+	present := map[string]bool{}
+	for _, c := range managed {
+		present[c.Group] = true
+	}
+	var out []string
+	for _, d := range rule.Declared {
+		if !present[d.Group] {
+			out = append(out, d.Group)
+		}
+	}
+	return out
 }
 
 // applyPins returns the managed list with every artifact of a pinned group at the pinned
@@ -126,38 +136,40 @@ func Declared(rule Rule) string {
 // componentsString is the declared components as the graph file records them.
 func componentsString(rule Rule) string {
 	var parts []string
-	for _, c := range rule.Components {
-		parts = append(parts, c.String())
+	for _, d := range rule.Declared {
+		parts = append(parts, d.String())
 	}
 	return strings.Join(parts, " ")
 }
 
-// RuleFor derives the rule from the anchor and the line's declared components.
-func RuleFor(anchor book.Anchor, components []string) Rule {
-	// 1. the groups: the anchor's and every component's, once each
+// RuleFor derives the rule from the anchor and the line's declared components. A
+// component that does not read as group@version is an error: the line is skipped and
+// the pass says why, rather than building the wrong graph.
+func RuleFor(anchor book.Anchor, components []string) (Rule, error) {
+	// 1. the groups: every component's and the anchor's, once each
 	seen := map[string]bool{}
 	var rule Rule
 	for _, c := range components {
-		parsed, err := book.ParseAnchor(c)
+		d, err := book.ParseDeclared(c)
 		if err != nil {
-			continue
+			return Rule{}, err
 		}
-		rule.Components = append(rule.Components, Component{Group: parsed.Group, Artifact: parsed.Artifact, Version: parsed.Version})
-		if !seen[parsed.Group] {
-			seen[parsed.Group] = true
-			rule.Groups = append(rule.Groups, parsed.Group)
+		rule.Declared = append(rule.Declared, d)
+		if !seen[d.Group] {
+			seen[d.Group] = true
+			rule.Groups = append(rule.Groups, d.Group)
 		}
 	}
 
 	// 2. no components, no rule: the wide graph
-	if len(rule.Components) == 0 {
-		return Rule{}
+	if len(rule.Declared) == 0 {
+		return Rule{}, nil
 	}
 	if !seen[anchor.Group] {
 		rule.Groups = append(rule.Groups, anchor.Group)
 	}
 	sort.Strings(rule.Groups)
-	return rule
+	return rule, nil
 }
 
 // String is what the graph file records: groups:<a,b,c>, or managed for the fallback.
@@ -174,7 +186,7 @@ func (r Rule) Wide() bool {
 }
 
 // selectRoots applies the rule to the anchor's managed list: the managed artifacts in
-// the root groups, then the declared components the anchor does not manage.
+// the root groups, in the anchor's order; the fallback takes everything.
 func selectRoots(managed []Component, rule Rule) []Component {
 	// 1. the fallback: everything
 	if rule.Wide() {
@@ -185,22 +197,12 @@ func selectRoots(managed []Component, rule Rule) []Component {
 		inGroups[g] = true
 	}
 
-	// 2. the managed artifacts of the root groups, in the anchor's order
+	// 2. the managed artifacts of the root groups
 	var out []Component
-	managedGA := map[string]bool{}
 	for _, c := range managed {
-		managedGA[c.Group+":"+c.Artifact] = true
 		if inGroups[c.Group] {
 			out = append(out, c)
 		}
-	}
-
-	// 3. a declared component the anchor does not manage, at its declared version
-	for _, c := range rule.Components {
-		if managedGA[c.Group+":"+c.Artifact] {
-			continue
-		}
-		out = append(out, c)
 	}
 	return out
 }

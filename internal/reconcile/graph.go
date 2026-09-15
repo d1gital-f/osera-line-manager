@@ -52,7 +52,10 @@ func needsGraph(dir string, ln book.Line) (bool, error) {
 	}
 
 	// 5. the roots rule and the declared components the line gives today; a graph built with others is rebuilt
-	rule := graph.RuleFor(anchor, ln.Components)
+	rule, err := graph.RuleFor(anchor, ln.Components)
+	if err != nil {
+		return false, err
+	}
 	if g.RootsRule != rule.String() {
 		return true, nil
 	}
@@ -83,7 +86,10 @@ func (r *Reconciler) ensureGraph(ctx context.Context, p *pass, ln book.Line) err
 	if err != nil {
 		return err
 	}
-	rule := graph.RuleFor(anchor, ln.Components)
+	rule, err := graph.RuleFor(anchor, ln.Components)
+	if err != nil {
+		return err
+	}
 	if rule.Wide() {
 		logf("%s: building the dependency graph from %s, no components declared, every managed artifact is a root", ln.ID, anchor)
 	} else {

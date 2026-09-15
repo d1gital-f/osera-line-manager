@@ -49,7 +49,7 @@ func TestReplaceEntriesLeavesOtherLinesAlone(t *testing.T) {
 // entries for the line is logged and its row and status file are not written.
 func TestRowGuard(t *testing.T) {
 	dir := t.TempDir()
-	lines := strings.Join(book.LineColumns, ",") + "\n" + testLine + ",maven,org.example:bom@1.0,org.example:a@1.0,dev,a test,,,,,,,,,\n"
+	lines := strings.Join(book.LineColumns, ",") + "\n" + testLine + ",maven,org.example:bom@1.0,org.example@1.0,dev,a test,,,,,,,,,\n"
 	if err := os.WriteFile(filepath.Join(dir, "supported-lines.csv"), []byte(lines), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -73,11 +73,11 @@ func TestFailedPassLeavesTheFileAsItIs(t *testing.T) {
 	// 1. the backlog repository: two lines, both graphs, the three dev entries, the rules
 	o := newOrigin(t)
 	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+
-		springLine+",maven,org.example:bom@1.0,org.example:a@1.0,wave-1,a test,,,,,,,,,\n"+
-		testLine+",maven,org.example:bom@1.0,org.example:a@1.0,dev,a test,,,,,,,,,\n")
+		springLine+",maven,org.example:bom@1.0,org.example@1.0,wave-1,a test,,,,,,,,,\n"+
+		testLine+",maven,org.example:bom@1.0,org.example@1.0,dev,a test,,,,,,,,,\n")
 	anchor := book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"}
-	writeGraph(t, o.dir, book.Line{ID: springLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example:a@1.0"}}, anchor)
-	writeGraph(t, o.dir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example:a@1.0"}}, anchor)
+	writeGraph(t, o.dir, book.Line{ID: springLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example@1.0"}}, anchor)
+	writeGraph(t, o.dir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example@1.0"}}, anchor)
 	devEntries := []book.Entry{
 		entry("CVE-2022-1471", "org.yaml:snakeyaml", "1.33", book.EntryOpen),
 		entry("CVE-2025-52999", "com.fasterxml.jackson.core:jackson-core", "2.14.2", book.EntryOpen),

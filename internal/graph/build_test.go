@@ -18,9 +18,9 @@ import (
 	"github.com/d1gital-f/osera-line-manager/internal/book"
 )
 
-// The pins a line's components impose: spring-core 5.3.39 over the 5.3.31 Boot manages
-// moves the whole org.springframework group; security the same; a component the
-// anchor does not manage pins nothing and stays a root at its version.
+// The pins a line's components impose: org.springframework@5.3.39 over the 5.3.31 Boot
+// manages moves the whole group, every managed version of it; security is managed at
+// the declared version and pins nothing; a group the anchor does not manage pins nothing.
 func TestPinsFor(t *testing.T) {
 	managed := []Component{
 		{Group: "org.springframework", Artifact: "spring-core", Version: "5.3.31"},
@@ -30,41 +30,41 @@ func TestPinsFor(t *testing.T) {
 		{Group: "org.apache.tomcat.embed", Artifact: "tomcat-embed-core", Version: "9.0.83"},
 	}
 	boot := book.Anchor{Group: "org.springframework.boot", Artifact: "spring-boot-dependencies", Version: "2.7.18"}
-	rule := RuleFor(boot, []string{"org.springframework:spring-core@5.3.39", "org.springframework.security:spring-security-core@5.7.11", "org.example:extra@9.9"})
+	rule, _ := RuleFor(boot, []string{"org.springframework@5.3.39", "org.springframework.security@5.7.11", "org.example@9.9"})
 
-	// 1. one pin, spring only: security is managed at the declared version, extra is not managed
+	// 1. two pins, both spring: one per managed version of the group
 	pins := pinsFor(managed, rule)
-	if len(pins) != 1 || pins[0].String() != "org.springframework:5.3.31>5.3.39" {
+	if len(pins) != 2 || pins[0].String() != "org.springframework:5.3.31>5.3.39" || pins[1].String() != "org.springframework:4.3.30>5.3.39" {
 		t.Fatalf("pins %v", pins)
 	}
 
-	// 2. applied: spring-core and spring-web move, the 4.3.30 artifact and the others stay
+	// 2. applied: the whole group at 5.3.39, the others stay
 	pinned := applyPins(managed, pins)
-	if pinned[0].Version != "5.3.39" || pinned[1].Version != "5.3.39" || pinned[2].Version != "4.3.30" || pinned[4].Version != "9.0.83" {
+	if pinned[0].Version != "5.3.39" || pinned[1].Version != "5.3.39" || pinned[2].Version != "5.3.39" || pinned[3].Version != "5.7.11" || pinned[4].Version != "9.0.83" {
 		t.Fatalf("pinned %v", pinned)
 	}
 
-	// 3. the pinned artifacts the project manages explicitly: the two at the new version
+	// 3. the pinned artifacts the project manages explicitly: the three at the new version
 	explicit := pinnedArtifacts(pinned, pins)
-	if len(explicit) != 2 || explicit[0].Artifact != "spring-core" || explicit[1].Artifact != "spring-web" {
+	if len(explicit) != 3 || explicit[0].Artifact != "spring-core" || explicit[1].Artifact != "spring-web" || explicit[2].Artifact != "spring-legacy" {
 		t.Fatalf("explicit %v", explicit)
 	}
 
-	// 4. the roots after the pins: the spring group at 5.3.39, security, and extra at 9.9
+	// 4. the roots after the pins: the spring group at 5.3.39 and security; org.example is not managed, so no root
 	roots := selectRoots(pinned, rule)
 	var keys []string
 	for _, c := range roots {
 		keys = append(keys, c.Key())
 	}
 	sort.Strings(keys)
-	want := "org.example:extra:9.9 org.springframework.security:spring-security-core:5.7.11 org.springframework:spring-core:5.3.39 org.springframework:spring-legacy:4.3.30 org.springframework:spring-web:5.3.39"
+	want := "org.springframework.security:spring-security-core:5.7.11 org.springframework:spring-core:5.3.39 org.springframework:spring-legacy:5.3.39 org.springframework:spring-web:5.3.39"
 	if strings.Join(keys, " ") != want {
 		t.Fatalf("roots %v", keys)
 	}
 
 	// 5. the property round trip
 	back := parsePins(pinsString(pins))
-	if len(back) != 1 || back[0] != pins[0] {
+	if len(back) != 2 || back[0] != pins[0] || back[1] != pins[1] {
 		t.Fatalf("parsed %v", back)
 	}
 }
@@ -147,7 +147,7 @@ func TestResolveFallsBackToProbes(t *testing.T) {
 	r.Maven = script
 	r.ProbeTimeout = time.Minute
 	anchor := book.Anchor{Group: "org.example", Artifact: "dev-bom", Version: "1.0"}
-	rule := RuleFor(anchor, []string{"org.example:lib@1.0"})
+	rule, _ := RuleFor(anchor, []string{"org.example@1.0"})
 	g, err := r.Resolve(context.Background(), "test", anchor, rule, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +160,7 @@ func TestResolveFallsBackToProbes(t *testing.T) {
 	if len(g.Roots) == 0 || len(g.Components) == 0 {
 		t.Fatalf("empty graph %+v", g)
 	}
-	if g.Declared != "org.example:lib@1.0" {
+	if g.Declared != "org.example@1.0" {
 		t.Fatalf("declared %q", g.Declared)
 	}
 }
@@ -222,7 +222,7 @@ func TestSpringRootsFromCentral(t *testing.T) {
 	}
 	r := NewResolver()
 	anchor := book.Anchor{Group: "org.springframework.boot", Artifact: "spring-boot-dependencies", Version: "2.7.18"}
-	rule := RuleFor(anchor, []string{"org.springframework:spring-core@5.3.39", "org.springframework.security:spring-security-core@5.7.11"})
+	rule, _ := RuleFor(anchor, []string{"org.springframework@5.3.39", "org.springframework.security@5.7.11"})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	m, err := r.readModel(ctx, anchor.Group, anchor.Artifact, anchor.Version)

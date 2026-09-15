@@ -82,7 +82,7 @@ func TestNeedsGraph(t *testing.T) {
 	}
 
 	// the line gains components: the roots rule changes, the wide graph is rebuilt narrow
-	ln.Components = []string{"org.example:a@1.0"}
+	ln.Components = []string{"org.example@1.0"}
 	needed, err = needsGraph(dir, ln)
 	if err != nil || !needed {
 		t.Fatalf("other roots rule: needed %v err %v", needed, err)
@@ -95,7 +95,7 @@ func writeGraph(t *testing.T, dir string, ln book.Line, anchor book.Anchor) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	g := &graph.Graph{LineID: ln.ID, Anchor: anchor, RootsRule: graph.RuleFor(anchor, ln.Components).String(), Declared: graph.Declared(graph.RuleFor(anchor, ln.Components)), Method: "one build", Components: []graph.Component{{Group: "org.example", Artifact: "a", Version: "1.0"}}, Dependencies: map[string][]string{}}
+	g := &graph.Graph{LineID: ln.ID, Anchor: anchor, RootsRule: mustRule(t, anchor, ln.Components).String(), Declared: graph.Declared(mustRule(t, anchor, ln.Components)), Method: "one build", Components: []graph.Component{{Group: "org.example", Artifact: "a", Version: "1.0"}}, Dependencies: map[string][]string{}}
 	if err := graph.Write(path, g, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -269,8 +269,8 @@ func keyFile(t *testing.T) string {
 func TestOnceDry(t *testing.T) {
 	// 1. the backlog repository with one line, its graph, two entries, the rules
 	o := newOrigin(t)
-	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+testLine+",maven,org.example:bom@1.0,org.example:a@1.0,dev,a test,,,,,,,,,\n")
-	writeGraph(t, o.dir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example:a@1.0"}}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
+	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+testLine+",maven,org.example:bom@1.0,org.example@1.0,dev,a test,,,,,,,,,\n")
+	writeGraph(t, o.dir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example@1.0"}}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
 	backlog := map[string]any{"schema_version": "0.6.0", "title": "test backlog", "standards_pack": "OSERA-SP-0.1.0", "generated": "2026-10-01T00:00:00Z", "entry_schema": "cve-backlog-entry-0.6.0.schema.json",
 		"entries": []book.Entry{entry("CVE-2024-0001", "org.example:a", "1.0", book.EntryOpen), entry("CVE-2024-0002", "org.example:b", "1.0", book.EntryOpen)}}
 	raw, _ := json.MarshalIndent(backlog, "", " ")
@@ -358,7 +358,7 @@ func TestOnceDry(t *testing.T) {
 func TestGraphLeftInWorktreeIsKept(t *testing.T) {
 	// 1. the backlog repository with one line and no graph
 	o := newOrigin(t)
-	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+testLine+",maven,org.example:bom@1.0,org.example:a@1.0,dev,a test,,,,,,,,,\n")
+	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+testLine+",maven,org.example:bom@1.0,org.example@1.0,dev,a test,,,,,,,,,\n")
 	backlog := map[string]any{"schema_version": "0.6.0", "title": "test backlog", "standards_pack": "OSERA-SP-0.1.0", "generated": "2026-10-01T00:00:00Z", "entry_schema": "cve-backlog-entry-0.6.0.schema.json",
 		"entries": []book.Entry{entry("CVE-2024-0001", "org.example:a", "1.0", book.EntryOpen)}}
 	raw, _ := json.MarshalIndent(backlog, "", " ")
@@ -394,7 +394,7 @@ func TestGraphLeftInWorktreeIsKept(t *testing.T) {
 	}
 
 	// 3. what a failed pass leaves: the graph in the worktree, not committed; then origin moves on
-	writeGraph(t, cfg.CloneDir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example:a@1.0"}}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
+	writeGraph(t, cfg.CloneDir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example@1.0"}}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
 	o.write(t, "README.md", "moved on\n")
 	o.commit(t, "someone else's commit")
 
@@ -416,8 +416,8 @@ func TestGraphLeftInWorktreeIsKept(t *testing.T) {
 func TestNothingChangedStagesNothing(t *testing.T) {
 	// 1. the same repository as the dry run test
 	o := newOrigin(t)
-	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+testLine+",maven,org.example:bom@1.0,org.example:a@1.0,dev,a test,,,,,,,,,\n")
-	writeGraph(t, o.dir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example:a@1.0"}}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
+	o.write(t, "supported-lines.csv", strings.Join(book.LineColumns, ",")+"\n"+testLine+",maven,org.example:bom@1.0,org.example@1.0,dev,a test,,,,,,,,,\n")
+	writeGraph(t, o.dir, book.Line{ID: testLine, Anchor: "org.example:bom@1.0", Components: []string{"org.example@1.0"}}, book.Anchor{Group: "org.example", Artifact: "bom", Version: "1.0"})
 	backlog := map[string]any{"schema_version": "0.6.0", "title": "test backlog", "standards_pack": "OSERA-SP-0.1.0", "generated": "2026-10-01T00:00:00Z", "entry_schema": "cve-backlog-entry-0.6.0.schema.json",
 		"entries": []book.Entry{entry("CVE-2024-0001", "org.example:a", "1.0", book.EntryOpen), entry("CVE-2024-0002", "org.example:b", "1.0", book.EntryOpen)}}
 	raw, _ := json.MarshalIndent(backlog, "", " ")
@@ -492,4 +492,14 @@ func TestNothingChangedStagesNothing(t *testing.T) {
 	if string(statusAfter) != string(statusBefore) {
 		t.Fatal("second pass rewrote the status file")
 	}
+}
+
+// mustRule is the rule of a test line, or the test fails.
+func mustRule(t *testing.T, anchor book.Anchor, components []string) graph.Rule {
+	t.Helper()
+	rule, err := graph.RuleFor(anchor, components)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rule
 }

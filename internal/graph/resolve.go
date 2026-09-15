@@ -147,6 +147,9 @@ func (r *Resolver) Resolve(ctx context.Context, lineID string, anchor book.Ancho
 	if importBOM {
 		g.Pins = pinsFor(m.Managed, rule)
 		managed = applyPins(m.Managed, g.Pins)
+		for _, group := range unmanagedGroups(m.Managed, rule) {
+			r.say("%s: the anchor %s manages nothing in the declared group %s, it gives no roots", lineID, anchor, group)
+		}
 		roots, err = r.roots(ctx, selectRoots(managed, rule))
 		if err != nil {
 			return nil, err

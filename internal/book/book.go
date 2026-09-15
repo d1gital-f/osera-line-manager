@@ -220,6 +220,40 @@ type Anchor struct {
 }
 
 // ParseAnchor reads group:artifact@version.
+// Declared is one entry of the components column: a group of the line's projects at
+// the version the line wants it, written group@version. The group is the scope, every
+// artifact of it the anchor manages is a root; the version is the pin, the whole group
+// moves to it when the anchor manages it at another. Wave 1 writes
+// org.springframework@5.3.39 on the Boot row: Boot 2.7.18 manages 5.3.31.
+type Declared struct {
+	Group   string
+	Version string
+}
+
+// String is group@version.
+func (d Declared) String() string {
+	return d.Group + "@" + d.Version
+}
+
+// ParseDeclared reads group@version. The older group:artifact@version form is an
+// error, not a skip: a row in that form must be corrected, or the line would silently
+// lose its scope.
+func ParseDeclared(s string) (Declared, error) {
+	// 1. the version after the @
+	at := strings.LastIndex(s, "@")
+	if at < 0 || at == 0 || at == len(s)-1 {
+		return Declared{}, fmt.Errorf("component %q: expected group@version", s)
+	}
+	group := s[:at]
+	version := s[at+1:]
+
+	// 2. no artifact: the column names a group, not one of its jars
+	if strings.Contains(group, ":") {
+		return Declared{}, fmt.Errorf("component %q: expected group@version, the column names a group, not one artifact", s)
+	}
+	return Declared{Group: group, Version: version}, nil
+}
+
 func ParseAnchor(s string) (Anchor, error) {
 	// 1. the version after the @
 	at := strings.LastIndex(s, "@")
