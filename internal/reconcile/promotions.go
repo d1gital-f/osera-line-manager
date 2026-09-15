@@ -34,7 +34,8 @@ func (r *Reconciler) readBoard(ctx context.Context) ([]status.Issue, error) {
 }
 
 // evidenceCache remembers the evidence read for each coordinate across passes,
-// so a coordinate is read once ever. None marks a coordinate without evidence.
+// so a coordinate with an evidence file is read once ever; one without is read again
+// every pass, the evidence can land after the jar. None is kept for older cache files.
 type evidenceCache struct {
 	Evidence map[string]*releases.Evidence `json:"evidence"`
 	None     map[string]bool               `json:"none"`
@@ -67,7 +68,8 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 		return nil, err
 	}
 
-	// 3. one promotion per coordinate, the evidence read once
+	// 3. one promotion per coordinate, the evidence read once when found; a coordinate
+	//    without one is read again every pass, the evidence can land after the jar
 	var out []status.Promotion
 	read := 0
 	patched := 0
@@ -84,15 +86,15 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 		patched++
 		key := c.String()
 		ev, known := cache.Evidence[key]
-		if !known && !cache.None[key] {
+		if !known {
 			ev, err = r.nexus.Evidence(ctx, r.cfg.Nexus.ReleaseRepository, c)
 			read++
 			if err != nil {
 				if !errors.Is(err, releases.ErrNoEvidence) {
 					return nil, err
 				}
-				cache.None[key] = true
-				highf("release repository: %s has no evidence file", key)
+				ev = nil
+				highf("release repository: %s has no evidence file yet", key)
 			} else {
 				cache.Evidence[key] = ev
 			}
@@ -104,8 +106,8 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 		out = append(out, status.Promotion{Coordinate: c, Evidence: ev})
 	}
 
-	// 4. the cache saved when anything was read
-	if read > 0 {
+	// 4. the cache saved when an evidence file was read
+	if read > 0 && len(cache.Evidence) > 0 {
 		raw, err = json.MarshalIndent(cache, "", "  ")
 		if err != nil {
 			return nil, err
