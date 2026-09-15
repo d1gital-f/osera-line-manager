@@ -292,3 +292,18 @@ func (c *Client) Put(ctx context.Context, repository, path string, body []byte, 
 	}
 	return fmt.Errorf("PUT %s: HTTP %d", path, resp.StatusCode)
 }
+
+// Get reads one file from a repository at a Maven path: the bytes and the status
+// code, 404 when it is not there.
+func (c *Client) Get(ctx context.Context, repository, path string) ([]byte, int, error) {
+	resp, err := c.do(ctx, fmt.Sprintf("/repository/%s/%s", repository, strings.TrimPrefix(path, "/")))
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	if err != nil {
+		return nil, resp.StatusCode, err
+	}
+	return raw, resp.StatusCode, nil
+}

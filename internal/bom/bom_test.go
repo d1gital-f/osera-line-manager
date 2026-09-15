@@ -161,3 +161,18 @@ func TestUploadRefused(t *testing.T) {
 		t.Fatal("a 403 went unnoticed")
 	}
 }
+
+// The version index: every version sorted, the latest twice as Maven writes it, read back.
+func TestIndex(t *testing.T) {
+	raw := Index("dev-1.0.x", []string{"2026.09.15.2", "2026.09.15"}, time.Date(2026, 9, 15, 13, 9, 33, 0, time.UTC))
+	want := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<metadata>\n  <groupId>org.finos.osera</groupId>\n  <artifactId>osera-bom-dev-1.0.x</artifactId>\n  <versioning>\n    <latest>2026.09.15.2</latest>\n    <release>2026.09.15.2</release>\n    <versions>\n      <version>2026.09.15</version>\n      <version>2026.09.15.2</version>\n    </versions>\n    <lastUpdated>20260915130933</lastUpdated>\n  </versioning>\n</metadata>\n"
+	if string(raw) != want {
+		t.Fatalf("index:\n%s", raw)
+	}
+	if v := IndexVersions(raw); len(v) != 2 || v[0] != "2026.09.15" || v[1] != "2026.09.15.2" {
+		t.Fatalf("read back %v", v)
+	}
+	if IndexPath("dev-1.0.x") != "org/finos/osera/osera-bom-dev-1.0.x/maven-metadata.xml" {
+		t.Fatal(IndexPath("dev-1.0.x"))
+	}
+}

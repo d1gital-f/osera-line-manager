@@ -229,3 +229,66 @@ func Read(raw []byte) ([]Dependency, error) {
 	}
 	return deps, nil
 }
+
+// IndexPath is where Maven tooling looks for the versions of the line's BOM.
+func IndexPath(lineID string) string {
+	return strings.ReplaceAll(Group, ".", "/") + "/" + ArtifactID(lineID) + "/maven-metadata.xml"
+}
+
+// Index is maven-metadata.xml for the line's BOM: every version published, the
+// latest, and when it was written. Renovate, Dependabot and the Maven versions
+// plugin read it to propose the next BOM; without it a bank finds the latest only
+// in the line's row.
+func Index(lineID string, versions []string, now time.Time) []byte {
+	sorted := append([]string{}, versions...)
+	sort.Strings(sorted)
+	latest := ""
+	if len(sorted) > 0 {
+		latest = sorted[len(sorted)-1]
+	}
+	var b strings.Builder
+	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<metadata>\n")
+	b.WriteString("  <groupId>" + Group + "</groupId>\n")
+	b.WriteString("  <artifactId>" + ArtifactID(lineID) + "</artifactId>\n")
+	b.WriteString("  <versioning>\n")
+	b.WriteString("    <latest>" + latest + "</latest>\n")
+	b.WriteString("    <release>" + latest + "</release>\n")
+	b.WriteString("    <versions>\n")
+	for _, v := range sorted {
+		b.WriteString("      <version>" + v + "</version>\n")
+	}
+	b.WriteString("    </versions>\n")
+	b.WriteString("    <lastUpdated>" + now.UTC().Format("20060102150405") + "</lastUpdated>\n")
+	b.WriteString("  </versioning>\n</metadata>\n")
+	return []byte(b.String())
+}
+
+// IndexVersions reads the versions an index lists, to see whether it is current.
+func IndexVersions(raw []byte) []string {
+	var out []string
+	for _, part := range strings.Split(string(raw), "<version>")[1:] {
+		v, _, found := strings.Cut(part, "</version>")
+		if found {
+			out = append(out, strings.TrimSpace(v))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// UploadIndex writes the index and its checksums.
+func UploadIndex(ctx context.Context, client *releases.Client, repository, lineID string, raw []byte) error {
+	path := IndexPath(lineID)
+	sha := sha1.Sum(raw)
+	md := md5.Sum(raw)
+	if err := client.Put(ctx, repository, path, raw, "application/xml"); err != nil {
+		return fmt.Errorf("uploading the BOM index of %s: %w", lineID, err)
+	}
+	if err := client.Put(ctx, repository, path+".sha1", []byte(hex.EncodeToString(sha[:])), "text/plain"); err != nil {
+		return fmt.Errorf("uploading the BOM index checksum of %s: %w", lineID, err)
+	}
+	if err := client.Put(ctx, repository, path+".md5", []byte(hex.EncodeToString(md[:])), "text/plain"); err != nil {
+		return fmt.Errorf("uploading the BOM index checksum of %s: %w", lineID, err)
+	}
+	return nil
+}

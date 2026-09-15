@@ -56,9 +56,10 @@ func needsBOM(pins []bom.Dependency, fixed []status.FixedEntry) bool {
 }
 
 // ensureBOM builds, uploads and stages a new BOM when the line's promoted set
-// moved, and puts its coordinate on the record.
+// moved, puts its coordinate on the record, and keeps the BOM's version index in
+// the release repository current.
 func (r *Reconciler) ensureBOM(ctx context.Context, p *pass, ln book.Line, rec status.Record, promoted []status.Promotion) (status.Record, error) {
-	// 1. what the last BOM pins
+	// 1. what the last BOM pins, and the versions already in the release repository
 	var pins []bom.Dependency
 	raw, err := os.ReadFile(r.path(filepath.FromSlash(bomPath(ln.ID))))
 	if err == nil {
@@ -69,17 +70,17 @@ func (r *Reconciler) ensureBOM(ctx context.Context, p *pass, ln book.Line, rec s
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return rec, err
 	}
-	if !needsBOM(pins, rec.Fixed) {
-		return rec, nil
-	}
-
-	// 2. the version, against the ones already in the release repository
 	var existing []string
 	for _, pr := range promoted {
 		if pr.Coordinate.Group == bom.Group && pr.Coordinate.Artifact == bom.ArtifactID(ln.ID) {
 			existing = append(existing, pr.Coordinate.Version)
 		}
 	}
+	if !needsBOM(pins, rec.Fixed) {
+		return rec, r.ensureBOMIndex(ctx, ln, existing)
+	}
+
+	// 2. the version, against the ones already in the release repository
 	version := bom.Version(r.now(), existing)
 	b, err := bom.Build(ln, rec.Fixed, version)
 	if err != nil {
@@ -105,10 +106,16 @@ func (r *Reconciler) ensureBOM(ctx context.Context, p *pass, ln book.Line, rec s
 		Lowf("* %s: BOM %s built with %d pins, uploaded to %s", ln.ID, b.Coordinate(), len(b.Dependencies), r.cfg.Nexus.ReleaseRepository)
 	}
 
-	// 4. the file staged, the coordinate on the record once it is really there
+	// 4. the file staged, the coordinate on the record once it is really there, the index current
 	err = r.stage(p, ln.ID, bomPath(ln.ID), content)
 	if err != nil {
 		return rec, err
+	}
+	if !r.cfg.Dry {
+		err = r.ensureBOMIndex(ctx, ln, append(existing, version))
+		if err != nil {
+			return rec, err
+		}
 	}
 	if !r.cfg.Dry {
 		rec.Consume = b.Coordinate()
@@ -564,4 +571,27 @@ func laneWords(lane string) string {
 		return "no lane"
 	}
 	return lane
+}
+
+// ensureBOMIndex writes maven-metadata.xml for the line's BOM when the release
+// repository has none or lists other versions, so Maven tooling can find the latest.
+func (r *Reconciler) ensureBOMIndex(ctx context.Context, ln book.Line, versions []string) error {
+	if r.nexus == nil || r.cfg.Dry || len(versions) == 0 {
+		return nil
+	}
+	want := append([]string{}, versions...)
+	sort.Strings(want)
+	raw, code, err := r.nexus.Get(ctx, r.cfg.Nexus.ReleaseRepository, bom.IndexPath(ln.ID))
+	if err != nil {
+		return fmt.Errorf("reading the BOM index of %s: %w", ln.ID, err)
+	}
+	if code == 200 && strings.Join(bom.IndexVersions(raw), " ") == strings.Join(want, " ") {
+		return nil
+	}
+	err = bom.UploadIndex(ctx, r.nexus, r.cfg.Nexus.ReleaseRepository, ln.ID, bom.Index(ln.ID, want, r.now()))
+	if err != nil {
+		return err
+	}
+	Lowf("* %s: BOM version index written, %d versions, latest %s", ln.ID, len(want), want[len(want)-1])
+	return nil
 }
