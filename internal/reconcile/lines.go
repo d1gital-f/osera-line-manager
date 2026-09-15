@@ -41,7 +41,9 @@ func WriteLines(path string, records []status.Record) error {
 	header := append([]string{}, rows[0][:book.DeclaredColumns]...)
 	header = append(header, statusColumns...)
 
-	// 3. one row per line, the declared part kept, the status part from the record
+	// 3. one row per line, the declared part kept, the status part from the record; a
+	// line without a record this pass (skipped, or in discrepancy) keeps the status
+	// columns it has, padded to the full width, never blanked
 	byLine := map[string]status.Record{}
 	for _, r := range records {
 		byLine[r.Line] = r
@@ -54,7 +56,11 @@ func WriteLines(path string, records []status.Record) error {
 		declared := append([]string{}, row[:book.DeclaredColumns]...)
 		rec, found := byLine[row[0]]
 		if !found {
-			out = append(out, append(declared, make([]string, len(statusColumns))...))
+			kept := append([]string{}, row[book.DeclaredColumns:]...)
+			for len(kept) < len(statusColumns) {
+				kept = append(kept, "")
+			}
+			out = append(out, append(declared, kept[:len(statusColumns)]...))
 			continue
 		}
 		out = append(out, append(declared,
