@@ -67,7 +67,11 @@ func (r *Reconciler) OnceFor(ctx context.Context, reason string) ([]status.Recor
 	if reason == "" {
 		reason = "on request"
 	}
-	Lowf("pass %d starts %s: backlog at %s (tag %s), %d lines: %s%s", r.passes, reason, short(p.head), tagWords(p.bookVersion), len(p.lines), lineNames(p.lines), since)
+	at := short(p.head)
+	if at == "" {
+		at = "the local directory"
+	}
+	Lowf("pass %d starts %s: backlog at %s (tag %s), %d lines: %s%s", r.passes, reason, at, tagWords(p.bookVersion), len(p.lines), lineNames(p.lines), since)
 	records, err := r.run(ctx, p)
 	if err != nil {
 		// a pass that fails after writing into the worktree leaves the repository's own files

@@ -124,7 +124,9 @@ func (g *GrypeScanner) UpdateDB(ctx context.Context) error {
 	if err != nil {
 		return errorf("grype db update: %v: %s", err, lastLines(output))
 	}
-	g.announce("grype: database updated in %s, %s", g.Now().Sub(started).Round(time.Second), g.DBStatus(ctx))
+	statusLine := g.DBStatus(ctx)
+	g.announce("grype: database updated in %s, %s", g.Now().Sub(started).Round(time.Second), builtWords(statusLine))
+	g.say("grype: %s", statusLine)
 
 	// 3. the stamp
 	return os.WriteFile(g.stampPath(), []byte(g.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
@@ -474,4 +476,15 @@ func lastLines(output []byte) string {
 		lines = lines[len(lines)-5:]
 	}
 	return strings.Join(lines, " | ")
+}
+
+// builtWords keeps the "Built: <date>" part of grype's status line, the one fact worth a
+// normal log; the rest (path, schema, source URL) is fine print.
+func builtWords(status string) string {
+	for _, part := range strings.Split(status, ", ") {
+		if strings.HasPrefix(part, "Built: ") {
+			return "built " + strings.TrimPrefix(part, "Built: ")
+		}
+	}
+	return status
 }
