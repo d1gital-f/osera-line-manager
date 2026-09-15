@@ -65,9 +65,11 @@ func TestLaneMoves(t *testing.T) {
 		{CVE: "CVE-3", Repository: "patch-c", Number: 2, State: "CLOSED", ItemID: "i3", Lane: "Not claimed"},
 		{CVE: "CVE-4", Repository: "backlog", Number: 4, State: "OPEN", ItemID: "i4", Lane: "Not claimed"},
 		{CVE: "CVE-5", Repository: "patch-e", Number: 5, State: "OPEN", ItemID: "", Lane: ""},
+		{CVE: "CVE-6", Repository: "somewhere-else", Number: 6, State: "OPEN", ItemID: "i6", Lane: "Not claimed"},
 	}
+	records[0].Entries = append(records[0].Entries, book.Entry{CVE: "CVE-6", Library: "g:f", Status: book.EntryInProgress})
 	moves := laneMoves(records, issues, "backlog")
-	if len(moves) != 1 || moves[0].ItemID != "i1" {
+	if len(moves) != 1 || moves[0].ItemID != "i1" || moves[0].CVE != "CVE-1 in a" {
 		t.Fatalf("moves %+v", moves)
 	}
 }

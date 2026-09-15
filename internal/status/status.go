@@ -173,12 +173,15 @@ func Compute(in Inputs) Record {
 		case declaredNotRemediable(e, card, onBoard):
 			declareEntry(e)
 			rec.NotRemediable = append(rec.NotRemediable, NotRemediable{CVE: e.CVE, Library: e.Library, Reason: e.Reason, Producer: e.Producer, At: in.AsOf})
-		case onBoard && card.Repository != "" && card.Repository != in.BacklogRepository:
+		case onBoard && InPatchRepository(card.Repository, in.BacklogRepository):
 			progressEntry(e, card.Repository)
 			rec.InProgress = append(rec.InProgress, EntryRef{CVE: e.CVE, Library: e.Library})
 		default:
 			openEntry(e)
 			rec.Open = append(rec.Open, EntryRef{CVE: e.CVE, Library: e.Library})
+			if onBoard && card.Repository != "" && card.Repository != in.BacklogRepository {
+				rec.Discrepancies = append(rec.Discrepancies, "issue #"+strconv.Itoa(card.Number)+" for "+e.CVE+" sits in "+card.Repository+", not a patch repository (patch-*): the entry stays open")
+			}
 		}
 
 		// 5. an issue closed while the entry is not done is for a person
@@ -390,4 +393,15 @@ func word(rec Record) string {
 		return NotFixed
 	}
 	return InProgress
+}
+
+// PatchPrefix is what a producer's patch repository is named with, patch-<project>.
+const PatchPrefix = "patch-"
+
+// InPatchRepository says the issue was claimed: it sits in a repository named
+// patch-<project>, not the backlog. Which project the library belongs to is not
+// checked here: spring-web lives in patch-spring-framework, and the mapping from a
+// library to its project is not in any file the line manager reads.
+func InPatchRepository(repository, backlogRepository string) bool {
+	return repository != "" && repository != backlogRepository && strings.HasPrefix(repository, PatchPrefix)
 }

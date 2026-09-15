@@ -527,10 +527,11 @@ func laneMoves(records []status.Record, issues []status.Issue, backlogRepository
 			if !onBoard || card.ItemID == "" || seen[card.ItemID] {
 				continue
 			}
-			if card.Repository == backlogRepository || card.State != "OPEN" || strings.EqualFold(card.Lane, InProgressLane) {
+			if !status.InPatchRepository(card.Repository, backlogRepository) || card.State != "OPEN" || strings.EqualFold(card.Lane, InProgressLane) {
 				continue
 			}
 			seen[card.ItemID] = true
+			card.CVE = e.CVE + " in " + shortLibrary(e.Library)
 			out = append(out, card)
 		}
 	}
@@ -551,14 +552,22 @@ func (r *Reconciler) moveLanes(ctx context.Context, p *pass, issues []status.Iss
 	}
 	for _, card := range moves {
 		if r.cfg.Dry {
-			logf("dry run, would move card #%d in %s from %q to %q", card.Number, card.Repository, card.Lane, InProgressLane)
+			logf("dry run, would move the card of %s (issue #%d in %s) from %q to %q", card.CVE, card.Number, card.Repository, laneWords(card.Lane), InProgressLane)
 			continue
 		}
 		err := r.board.SetLane(ctx, card.ItemID, option)
 		if err != nil {
 			return err
 		}
-		Lowf("board: card #%d in %s moved from %q to %q, a producer has it", card.Number, card.Repository, card.Lane, InProgressLane)
+		Lowf("board: %s is claimed, its issue #%d sits in %s; card moved from %q to %q", card.CVE, card.Number, card.Repository, laneWords(card.Lane), InProgressLane)
 	}
 	return nil
+}
+
+// laneWords names a lane in a log line, "no lane" when the card has none.
+func laneWords(lane string) string {
+	if lane == "" {
+		return "no lane"
+	}
+	return lane
 }
