@@ -57,7 +57,7 @@ func (r *Reconciler) Run(ctx context.Context) error {
 func (r *Reconciler) passFor(ctx context.Context, reason string) {
 	_, err := r.OnceFor(ctx, reason)
 	if err != nil {
-		Lowf("pass %d failed: %v", r.passes, err)
+		Lowf("! pass %d failed: %v", r.passes, err)
 	}
 }
 
@@ -71,7 +71,7 @@ func (r *Reconciler) mux() *http.ServeMux {
 	mux.HandleFunc("POST /pass", func(w http.ResponseWriter, _ *http.Request) {
 		select {
 		case r.wake <- "by hand, POST /pass":
-			logf("a pass was asked for by hand on /pass; it starts now, or when the running one ends")
+			logf("+ a pass was asked for by hand on /pass; it starts now, or when the running one ends")
 			w.WriteHeader(http.StatusAccepted)
 		default:
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -79,10 +79,10 @@ func (r *Reconciler) mux() *http.ServeMux {
 	})
 	mux.Handle("POST /webhook", releases.Handler(r.cfg.WebhookSecret, func(ev releases.Event) {
 		if ev.Repository != r.cfg.Nexus.ReleaseRepository {
-			logf("webhook from %s ignored: not the release repository", ev.Repository)
+			logf("! webhook from %s ignored: not the release repository", ev.Repository)
 			return
 		}
-		logf("webhook from the release repository: %s %s; a pass starts now, or when the running one ends", ev.Action, ev.Coordinate)
+		logf("+ webhook from the release repository: %s %s; a pass starts now, or when the running one ends", ev.Action, ev.Coordinate)
 		select {
 		case r.wake <- fmt.Sprintf("on the webhook: %s %s", ev.Action, ev.Coordinate):
 		default:

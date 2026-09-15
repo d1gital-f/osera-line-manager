@@ -75,6 +75,7 @@ func (r *Reconciler) OnceFor(ctx context.Context, reason string) ([]status.Recor
 	if at == "" {
 		at = "the local directory"
 	}
+	Lowf("%s", strings.Repeat("-", 72))
 	Lowf("pass %d starts %s: backlog at %s (tag %s), %d lines: %s%s", r.passes, reason, at, tagWords(p.bookVersion), len(p.lines), lineNames(p.lines), since)
 	records, err := r.run(ctx, p)
 	if err != nil {
@@ -82,7 +83,7 @@ func (r *Reconciler) OnceFor(ctx context.Context, reason string) ([]status.Recor
 		// as they are on main, the graphs excepted, and no scan stamp: the next pass starts clean
 		discardErr := r.discard(p)
 		if discardErr != nil {
-			Lowf("pass %d: discarding the failed pass: %v", r.passes, discardErr)
+			Lowf("! pass %d: discarding the failed pass: %v", r.passes, discardErr)
 		}
 		return nil, err
 	}
@@ -123,7 +124,7 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 		err = r.ensureGraph(ctx, p, ln)
 		if err != nil {
 			// one line's resolve failing does not stop the others; it is retried next pass
-			Lowf("%s: graph: %v (skipped this pass)", ln.ID, err)
+			Lowf("! %s: graph: %v (skipped this pass)", ln.ID, err)
 			p.failed[ln.ID] = err
 			continue
 		}
@@ -133,7 +134,7 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 			kept = append(kept, ln.ID)
 		}
 	}
-	logf("%s", graphsWords(built, kept))
+	logf("+ %s", graphsWords(built, kept))
 
 	// 3. the scan of every line whose graph is new or whose last scan is old, merged into the backlog
 	var due []book.Line
@@ -148,11 +149,11 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 			due = append(due, ln)
 		}
 	}
-	logf("%s", rescanWords(due, reasons))
+	logf("+ %s", rescanWords(due, reasons))
 	for _, ln := range due {
 		err = r.scanLine(ctx, p, ln)
 		if err != nil {
-			Lowf("%s: scan: %v (skipped this pass)", ln.ID, err)
+			Lowf("! %s: scan: %v (skipped this pass)", ln.ID, err)
 			p.failed[ln.ID] = err
 		}
 	}
@@ -187,7 +188,7 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 			Consume:           ln.Consume,
 		})
 		for _, words := range transitions(ln.ID, p.before, rec.Entries) {
-			logf("%s: %s", ln.ID, words)
+			logf("    %s: %s", ln.ID, words)
 		}
 		r.replaceEntries(p, ln.ID, rec.Entries)
 
@@ -229,9 +230,9 @@ func (r *Reconciler) run(ctx context.Context, p *pass) ([]status.Record, error) 
 	for _, rec := range p.records {
 		old, known := p.previous[rec.Line]
 		if known {
-			Lowf("%s", recordWordsWas(rec, old))
+			Lowf("> %s", recordWordsWas(rec, old))
 		} else {
-			Lowf("%s", recordWords(rec))
+			Lowf("> %s", recordWords(rec))
 		}
 	}
 	return p.records, nil
@@ -250,7 +251,7 @@ func (r *Reconciler) readInputs(ctx context.Context, p *pass) error {
 			return fmt.Errorf("fetching the backlog: %w", err)
 		}
 		if res.Reset {
-			logf("the clone was reset to origin, it had moved on its own")
+			logf("! the clone was reset to origin, it had moved on its own")
 		}
 		p.head, _, err = r.clone.Head()
 		if err != nil {

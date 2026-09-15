@@ -61,7 +61,7 @@ The server answers `GET /healthz`, `GET /status/<line_id>.json` from the clone, 
 
 ## The log
 
-Every line is the full timestamp in RFC 3339 UTC, a space, one fact in plain words: what happened, to what, named, and why it matters. Nothing happens in the pod without a line that says what fired and what it found. Three levels, `LOG_LEVEL` or `--log-level`:
+Every line is the full timestamp in RFC 3339 UTC, a space, a mark, one fact in plain words: what happened, to what, named, and why it matters. Nothing happens in the pod without a line that says what fired and what it found. A dashed line opens every pass. The marks: `+` a step that reads or decides, four spaces of indent the detail under a step, `*` a write to GitHub or Nexus, `>` a line's state at the end of the pass, `!` an error, a skip or a discrepancy; the pass start and end carry no mark. Three levels, `LOG_LEVEL` or `--log-level`:
 
 - `low`: the pass start with its reason (the timer, a webhook, a request on `/pass`, the start of the pod) and its end with when the next one is; one sentence per line at the end; every write to GitHub or Nexus (commit, pull request, merge, tag, issue closed with its comment, card moved, BOM); every error and discrepancy.
 - `medium`, the default: `low` plus one line per step: the graphs built or kept; which lines are scanned again and why, and when the others are next; a scan compared with the backlog (what is new, what changed priority); the board with the claimed cards named; the release repository with what is new and what waits for its evidence file; every entry that changed status, grouped by the move and named; the changes to commit; `validate` green or not, with the reason; the tag or why there is none; every webhook received and what it announced.

@@ -29,7 +29,7 @@ func (r *Reconciler) readBoard(ctx context.Context) ([]status.Issue, error) {
 		return nil, fmt.Errorf("reading the board: %w", err)
 	}
 	issues := board.Issues(cards, r.cfg.Repo)
-	logf("%s", boardWords(issues, r.cfg.Repo))
+	logf("+ %s", boardWords(issues, r.cfg.Repo))
 	return issues, nil
 }
 
@@ -103,7 +103,7 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 				without = append(without, key)
 			} else {
 				cache.Evidence[key] = ev
-				logf("release repository: evidence for %s read: producer %s, fixes %s", key, ev.Producer, strings.Join(ev.CVEs(), ", "))
+				logf("    evidence for %s read: producer %s, fixes %s", key, ev.Producer, strings.Join(ev.CVEs(), ", "))
 			}
 		}
 		if ev != nil {
@@ -124,7 +124,7 @@ func (r *Reconciler) readPromotions(ctx context.Context, p *pass) ([]status.Prom
 			return nil, err
 		}
 	}
-	logf("%s", releasesWords(len(coords), patched, withEvidence, fresh, without))
+	logf("+ %s", releasesWords(len(coords), patched, withEvidence, fresh, without))
 	return out, nil
 }
 

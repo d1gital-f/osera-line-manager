@@ -92,7 +92,7 @@ func (r *Reconciler) ensureBOM(ctx context.Context, p *pass, ln book.Line, rec s
 
 	// 3. the upload, the intent written first, not in a dry run
 	if r.cfg.Dry {
-		logf("%s: dry run, would upload the BOM %s with %d pins", ln.ID, b.Coordinate(), len(b.Dependencies))
+		logf("* %s: dry run, would upload the BOM %s with %d pins", ln.ID, b.Coordinate(), len(b.Dependencies))
 	} else {
 		err = intent.Write(r.cachePath("intent.json"), intent.Intent{Kind: "bom", Line: ln.ID, Ref: b.Coordinate()})
 		if err != nil {
@@ -102,7 +102,7 @@ func (r *Reconciler) ensureBOM(ctx context.Context, p *pass, ln book.Line, rec s
 		if err != nil {
 			return rec, err
 		}
-		Lowf("%s: BOM %s built with %d pins, uploaded to %s", ln.ID, b.Coordinate(), len(b.Dependencies), r.cfg.Nexus.ReleaseRepository)
+		Lowf("* %s: BOM %s built with %d pins, uploaded to %s", ln.ID, b.Coordinate(), len(b.Dependencies), r.cfg.Nexus.ReleaseRepository)
 	}
 
 	// 4. the file staged, the coordinate on the record once it is really there
@@ -124,7 +124,7 @@ func (r *Reconciler) stageOutputs(p *pass) error {
 	for _, rec := range p.records {
 		inFile := len(p.book.ForLine(rec.Line))
 		if rec.InScope != inFile {
-			Lowf("%s: discrepancy, the record has %d in scope and the backlog file %d entries, the row and the status file are not written this pass", rec.Line, rec.InScope, inFile)
+			Lowf("! %s: discrepancy, the record has %d in scope and the backlog file %d entries, the row and the status file are not written this pass", rec.Line, rec.InScope, inFile)
 			continue
 		}
 		rows = append(rows, rec)
@@ -238,10 +238,10 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
-	logf("changes to commit: %s", changesWords(paths))
-	highf("staged %d files for the commit: %s", len(paths), strings.Join(paths, ", "))
+	logf("* changes to commit: %s", changesWords(paths))
+	highf("    staged %d files for the commit: %s", len(paths), strings.Join(paths, ", "))
 	if r.cfg.Dry || r.clone == nil {
-		logf("dry run, would commit %s", strings.Join(paths, ", "))
+		logf("* dry run, would commit %s", strings.Join(paths, ", "))
 		return nil
 	}
 
@@ -263,31 +263,31 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 	if err != nil {
 		return err
 	}
-	Lowf("committed %s on %s%s", commit.SHA[:7], branch, r.verifiedWords(ctx, commit.SHA))
+	Lowf("* committed %s on %s%s", commit.SHA[:7], branch, r.verifiedWords(ctx, commit.SHA))
 
 	// 2. the pull request and its checks
 	number, err := r.api.OpenPullRequest(ctx, r.cfg.Owner, r.cfg.Repo, branch, repo.Branch, "Line manager: "+strings.Join(p.changedLines, ", "), message)
 	if err != nil {
 		return err
 	}
-	Lowf("pull request #%d opened for %s, waiting for validate (up to %s)", number, branch, r.checkTimeout())
+	Lowf("* pull request #%d opened for %s, waiting for validate (up to %s)", number, branch, r.checkTimeout())
 	waited := r.now()
 	green, why, err := r.waitForChecks(ctx, commit.SHA)
 	if err != nil {
 		return err
 	}
 	if !green {
-		logf("validate: not green after %s (%s); pull request #%d left open for a person", seconds(r.now().Sub(waited)), why, number)
+		logf("! validate: not green after %s (%s); pull request #%d left open for a person", seconds(r.now().Sub(waited)), why, number)
 		return r.api.Comment(ctx, r.cfg.Owner, r.cfg.Repo, number, "validate is not green on "+commit.SHA[:7]+" ("+why+"), the line manager leaves this pull request for a person.")
 	}
-	logf("validate: green after %s", seconds(r.now().Sub(waited)))
+	logf("    validate: green after %s", seconds(r.now().Sub(waited)))
 
 	// 3. the merge, the fetch, the intent noted on the new head
 	err = r.api.MergePullRequest(ctx, r.cfg.Owner, r.cfg.Repo, number)
 	if err != nil {
 		return err
 	}
-	Lowf("merged pull request #%d", number)
+	Lowf("* merged pull request #%d", number)
 	err = r.auth(ctx)
 	if err != nil {
 		return err
@@ -307,7 +307,7 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 
 	// 4. the tag, when the backlog changed
 	if !p.backlogChanged {
-		logf("no tag: the backlog file did not change")
+		logf("    no tag: the backlog file did not change")
 		return nil
 	}
 	tags, err := r.clone.Tags()
@@ -319,7 +319,7 @@ func (r *Reconciler) publish(ctx context.Context, p *pass) error {
 	if err != nil {
 		return err
 	}
-	Lowf("tagged %s at %s: the backlog changed, the issues workflow runs on the tag", name, head[:7])
+	Lowf("* tagged %s at %s: the backlog changed, the issues workflow runs on the tag", name, head[:7])
 	return nil
 }
 
@@ -374,7 +374,7 @@ func (r *Reconciler) waitForChecks(ctx context.Context, sha string) (bool, strin
 		// 1. the named check must exist: GitHub creates the check run a few seconds
 		//    after the pull request opens, and no check at all is not green
 		if !announced {
-			highf("validate: pending")
+			highf("    validate: pending")
 			announced = true
 		}
 		pending := false
@@ -418,7 +418,7 @@ const requiredCheck = "validate"
 func (r *Reconciler) settleIssues(ctx context.Context, p *pass, issues []status.Issue) error {
 	for _, a := range issueActions(p, issues) {
 		if r.cfg.Dry || r.api == nil {
-			logf("dry run, would %s issue #%d in %s: %s", verb(a.Reopen), a.Number, a.Repository, a.Comment)
+			logf("* dry run, would %s issue #%d in %s: %s", verb(a.Reopen), a.Number, a.Repository, a.Comment)
 			continue
 		}
 		var err error
@@ -430,7 +430,7 @@ func (r *Reconciler) settleIssues(ctx context.Context, p *pass, issues []status.
 		if err != nil {
 			return err
 		}
-		Lowf("%sd issue #%d in %s: %s", verb(a.Reopen), a.Number, a.Repository, a.Comment)
+		Lowf("* %sd issue #%d in %s: %s", verb(a.Reopen), a.Number, a.Repository, a.Comment)
 	}
 	return nil
 }
@@ -547,19 +547,19 @@ func (r *Reconciler) moveLanes(ctx context.Context, p *pass, issues []status.Iss
 	}
 	option := r.board.LaneOption(InProgressLane)
 	if option == "" {
-		logf("board: no lane named %q, the %d claimed cards stay where they are", InProgressLane, len(moves))
+		logf("! board: no lane named %q, the %d claimed cards stay where they are", InProgressLane, len(moves))
 		return nil
 	}
 	for _, card := range moves {
 		if r.cfg.Dry {
-			logf("dry run, would move the card of %s (issue #%d in %s) from %q to %q", card.CVE, card.Number, card.Repository, laneWords(card.Lane), InProgressLane)
+			logf("* dry run, would move the card of %s (issue #%d in %s) from %q to %q", card.CVE, card.Number, card.Repository, laneWords(card.Lane), InProgressLane)
 			continue
 		}
 		err := r.board.SetLane(ctx, card.ItemID, option)
 		if err != nil {
 			return err
 		}
-		Lowf("board: %s is claimed, its issue #%d sits in %s; card moved from %q to %q", card.CVE, card.Number, card.Repository, laneWords(card.Lane), InProgressLane)
+		Lowf("* board: %s is claimed, its issue #%d sits in %s; card moved from %q to %q", card.CVE, card.Number, card.Repository, laneWords(card.Lane), InProgressLane)
 	}
 	return nil
 }
