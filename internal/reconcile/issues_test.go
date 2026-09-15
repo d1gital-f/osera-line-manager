@@ -5,7 +5,11 @@
 package reconcile
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/d1gital-f/osera-line-manager/internal/book"
 	"github.com/d1gital-f/osera-line-manager/internal/status"
@@ -71,5 +75,44 @@ func TestLaneMoves(t *testing.T) {
 	moves := laneMoves(records, issues, "backlog")
 	if len(moves) != 1 || moves[0].ItemID != "i1" || moves[0].CVE != "CVE-1 in a" {
 		t.Fatalf("moves %+v", moves)
+	}
+}
+
+// A scan record carries a digest of the rules and the advisory file: when either changes
+// the line is due again, whatever the interval; unchanged, the interval decides.
+func TestScanDecisionOnChangedInputs(t *testing.T) {
+	dir := t.TempDir()
+	r := &Reconciler{cfg: Config{RescanInterval: 168 * time.Hour, DevAdvisories: "advisories/dev.json"}, now: time.Now}
+	r.cfg.CloneDir = dir
+	r.cfg.CacheDir = filepath.Join(dir, "cache")
+	if err := os.MkdirAll(filepath.Join(dir, "rules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(r.cfg.CacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "rules", "prioritisation.yaml"), []byte("version: 0.1.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := &pass{staged: map[string][]byte{}, book: &book.Book{Entries: []book.Entry{{CVE: "CVE-1", Library: "g:a", Lines: []string{"dev"}}}}}
+	ln := book.Line{ID: "dev"}
+
+	// 1. scanned now with the current inputs: not due
+	p.scanned = []string{"dev"}
+	if err := r.writeStamps(p); err != nil {
+		t.Fatal(err)
+	}
+	due, why := r.scanDecision(p, ln)
+	if due {
+		t.Fatalf("just scanned, yet due: %s", why)
+	}
+
+	// 2. the rules file changes: due, and the reason says so
+	if err := os.WriteFile(filepath.Join(dir, "rules", "prioritisation.yaml"), []byte("version: 0.2.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	due, why = r.scanDecision(p, ln)
+	if !due || !strings.Contains(why, "rules file or the advisory file changed") {
+		t.Fatalf("a changed rules file must make the line due: %v %s", due, why)
 	}
 }

@@ -6,6 +6,8 @@ package reconcile
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,7 +37,8 @@ func needsScan(stamp string, justBuilt, hasEntries bool, interval time.Duration,
 	if err != nil {
 		return true
 	}
-	last, err := time.Parse(time.RFC3339, strings.TrimSpace(string(raw)))
+	when, _, _ := strings.Cut(strings.TrimSpace(string(raw)), " ")
+	last, err := time.Parse(time.RFC3339, when)
 	if err != nil {
 		return true
 	}
@@ -57,14 +60,36 @@ func (r *Reconciler) scanDecision(p *pass, ln book.Line) (bool, string) {
 	if err != nil {
 		return true, "is due: no scan is recorded since the restart"
 	}
-	last, err := time.Parse(time.RFC3339, strings.TrimSpace(string(raw)))
+	when, inputs, _ := strings.Cut(strings.TrimSpace(string(raw)), " ")
+	last, err := time.Parse(time.RFC3339, when)
 	if err != nil {
 		return true, "is due: the scan record is unreadable"
+	}
+	if inputs != r.scanInputs() {
+		return true, "is due: the rules file or the advisory file changed since its last scan"
 	}
 	if r.now().Sub(last) >= interval {
 		return true, fmt.Sprintf("is due: last scanned %s, scanned again every %s", last.UTC().Format("2 Jan 15:04"), interval)
 	}
 	return false, fmt.Sprintf("last scanned %s, next %s", last.UTC().Format("2 Jan 15:04"), last.Add(interval).UTC().Format("2 Jan 15:04"))
+}
+
+// scanInputs is a digest of what shapes a scan besides the graph: the rules file and,
+// on dev, the advisory file. A scan record carries it, so a change to either scans
+// every line again on the next pass, in production as on dev.
+func (r *Reconciler) scanInputs() string {
+	h := sha256.New()
+	for _, rel := range []string{filepath.Join("rules", "prioritisation.yaml"), filepath.FromSlash(r.cfg.DevAdvisories)} {
+		if rel == "" {
+			continue
+		}
+		raw, err := os.ReadFile(r.path(rel))
+		if err != nil {
+			continue
+		}
+		h.Write(raw)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 // scanLine scans the line's graph and merges the result into the backlog. The caller decided it is due.
@@ -153,7 +178,7 @@ func (r *Reconciler) writeStamps(p *pass) error {
 		return nil
 	}
 	for _, lineID := range p.scanned {
-		err := os.WriteFile(r.scanStamp(lineID), []byte(r.now().UTC().Format(time.RFC3339)+"\n"), 0o644)
+		err := os.WriteFile(r.scanStamp(lineID), []byte(r.now().UTC().Format(time.RFC3339)+" "+r.scanInputs()+"\n"), 0o644)
 		if err != nil {
 			return err
 		}
